@@ -1,0 +1,2263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>withWoodStock — 木材在庫管理</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  /* 背景・サーフェス：白ベース維持 */
+  --bg:#fbfaf9;--surface:#ffffff;
+  --surface2:#f2f5f2;/* 極薄セージグリーン */
+  --surface3:#e6ede7;/* 薄いセージグリーン */
+  /* ボーダー：ベージュグリーン系 */
+  --border:#cdd5ce;--border2:#9aab9c;
+  /* 文字色：変更しない */
+  --text:#1a130b;--muted:#615341;--soft:#473c2e;
+  /* アクセント：パレットの5色から */
+  --accent:#9b7248;        /* ウォームブラウン */
+  --accent2:#577358;       /* 中間グリーン */
+  --warn:#d35400;--danger:#c0392b;--success:#3d7a52;
+  --material:#7d9278;      /* セージグリーン（社内資材バッジ） */
+  /* ナビ・サイドバー用（パレット最暗色） */
+  --nav-dark:#2d3d33;      /* 深い森緑 */
+  --nav-dark2:#3d5440;     /* 中間グリーン暗め */
+  --sage:#7d9278;          /* セージグリーン */
+  --beige:#cec9b0;         /* 生成りベージュ */
+  --font:'Noto Sans JP',sans-serif;--mono:'DM Mono',monospace;
+  --r:10px;--r2:14px;
+  --nav-w:228px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;min-height:100vh;display:flex;line-height:1.6}
+/* ─── サイドバー（シニア対応: 大きめクリック領域） ─── */
+.sidebar{width:var(--nav-w);background:var(--nav-dark);border-right:none;flex-shrink:0;display:flex;flex-direction:column;height:100vh;position:sticky;top:0}
+.logo{padding:22px 18px 16px;border-bottom:1px solid var(--border)}
+.logo h1{font-size:15px;font-weight:800;color:#ffffff;letter-spacing:.04em}
+.logo p{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+.nav{flex:1;padding:10px 0;overflow-y:auto}
+.nav-sec{padding:14px 18px 5px;font-size:10px;font-weight:800;color:rgba(255,255,255,.38);letter-spacing:.14em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:11px;padding:12px 18px;cursor:pointer;color:rgba(255,255,255,.65);font-size:14px;font-weight:500;transition:all .15s;border-left:3px solid transparent;min-height:48px}
+.nav-item:hover{color:#ffffff;background:rgba(125,146,120,.25)}
+.nav-item.active{color:#ffffff;background:rgba(155,114,72,.3);border-left-color:var(--accent)}
+.nav-item svg{width:18px;height:18px;flex-shrink:0}
+/* ─── メインエリア ─── */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:58px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar h2{font-size:18px;font-weight:800;color:var(--text);letter-spacing:.02em}
+.topbar-right{display:flex;align-items:center;gap:14px}
+.content{flex:1;overflow-y:auto;padding:24px 28px}
+.page{display:none}
+.page.active{display:block}
+/* ─── KPIグリッド ─── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:22px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px;transition:border-color .15s}
+.kpi:hover{border-color:var(--border2)}
+.kpi-label{font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;letter-spacing:.04em}
+.kpi-value{font-size:28px;font-weight:800;color:var(--text);font-family:var(--mono);letter-spacing:-.02em;line-height:1}
+.kpi-sub{font-size:12px;margin-top:6px;color:var(--muted)}
+.kpi-sub.up{color:var(--accent2)}
+.kpi-sub.down{color:var(--danger)}
+/* ─── カード ─── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px}
+.card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;letter-spacing:.02em}
+.chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:22px}
+/* ─── テーブル（シニア対応: 行高さ広め・大きめ文字） ─── */
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:var(--surface2);padding:12px 16px;text-align:left;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td{padding:12px 16px;border-bottom:1px solid rgba(220,213,197,.8);color:var(--text);font-size:14px}
+tr:hover td{background:rgba(125,146,120,.08)}
+tr:last-child td{border-bottom:none}
+/* ─── バッジ ─── */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;font-family:var(--mono)}
+.badge-blue{background:rgba(125,146,120,.15);color:#2d4a35;border:1px solid rgba(125,146,120,.4)}
+.badge-green{background:rgba(87,115,88,.12);color:#2d4a2e;border:1px solid rgba(87,115,88,.4)}
+.badge-amber{background:rgba(155,114,72,.12);color:#6b4820;border:1px solid rgba(155,114,72,.4)}
+.badge-red{background:rgba(192,57,43,.1);color:#7b1f16;border:1px solid rgba(192,57,43,.3)}
+.badge-purple{background:rgba(125,146,120,.14);color:#384e3a;border:1px solid rgba(125,146,120,.35)}
+.badge-material{background:rgba(125,146,120,.15);color:#2d4a35;border:1.5px solid rgba(125,146,120,.42);font-weight:800}
+/* ─── フォーム（シニア対応: 大きめ入力欄・余白） ─── */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.fg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fg label{font-size:12px;font-weight:700;color:var(--soft);letter-spacing:.05em;text-transform:uppercase}
+.fg input,.fg select,.fg textarea{background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:11px 14px;font-size:15px;font-family:var(--font);outline:none;transition:border-color .15s,box-shadow .15s;width:100%}
+.fg input:focus,.fg select:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(87,115,88,.18)}
+.fg select option{background:var(--surface2)}
+/* ─── ボタン（シニア対応: 大きめ・高コントラスト） ─── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:var(--r);font-size:14px;font-family:var(--font);font-weight:700;cursor:pointer;border:none;transition:all .15s;min-height:42px}
+.btn-primary{background:var(--accent);color:#ffffff;box-shadow:0 2px 8px rgba(155,114,72,.3)}
+.btn-primary:hover{background:#7a5836;transform:translateY(-1px)}
+.btn-success{background:var(--accent2);color:#ffffff;box-shadow:0 2px 8px rgba(87,115,88,.3)}
+.btn-success:hover{background:#3d5440;transform:translateY(-1px)}
+.btn-danger{background:var(--danger);color:#ffffff}
+.btn-danger:hover{background:#a12e23}
+.btn-warn{background:rgba(211,84,0,.1);color:var(--warn);border:1.5px solid rgba(211,84,0,.3)}
+.btn-outline{background:transparent;color:var(--soft);border:1.5px solid var(--border2)}
+.btn-outline:hover{background:var(--surface2);color:var(--text)}
+.btn-sm{padding:7px 13px;font-size:13px;min-height:34px}
+/* ─── タブ（シニア対応: 大きめ） ─── */
+.tabs{display:flex;gap:3px;background:var(--surface3);padding:5px;border-radius:var(--r2);margin-bottom:18px;width:fit-content;border:1px solid var(--border)}
+.tab{padding:9px 18px;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;min-height:40px;display:flex;align-items:center}
+.tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.12);font-weight:700}
+.tab:hover:not(.active){color:var(--text)}
+/* ─── ツールバー ─── */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.swrap{position:relative;flex:1;min-width:200px}
+.swrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.swrap input{width:100%;padding:10px 14px 10px 36px;background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);font-size:14px;font-family:var(--font);outline:none}
+.swrap input:focus{border-color:var(--accent)}
+.toolbar select{background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:9px 13px;font-size:14px;font-family:var(--font);outline:none;min-height:42px}
+/* ─── アラート ─── */
+.alert{padding:13px 16px;border-radius:var(--r);font-size:14px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;line-height:1.6}
+.alert-info{background:rgba(125,146,120,.08);border:1px solid rgba(125,146,120,.25);color:#2d4a35}
+.alert-success{background:rgba(87,115,88,.08);border:1px solid rgba(87,115,88,.25);color:#2d4a2e}
+.alert svg{width:16px;height:16px;flex-shrink:0;margin-top:2px}
+/* ─── モーダル ─── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(26,19,11,.55);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:18px;width:600px;max-height:90vh;overflow-y:auto}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-header h3{font-size:17px;font-weight:700;color:var(--text)}
+.close-btn{background:none;border:none;cursor:pointer;color:var(--muted);padding:6px;line-height:1;font-size:22px;transition:color .15s}
+.close-btn:hover{color:var(--text)}
+.modal-body{padding:20px 24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:12px}
+/* ─── PDF ─── */
+.pdf-drop{border:2px dashed var(--border);border-radius:var(--r2);padding:40px;text-align:center;cursor:pointer;transition:all .2s}
+.pdf-drop:hover,.pdf-drop.dragover{border-color:var(--accent2);background:rgba(87,115,88,.06)}
+.pdf-drop p{color:var(--muted);font-size:14px;margin-top:12px}
+.pdf-drop span{color:var(--accent)}
+.pdf-loading{display:none;text-align:center;padding:28px}
+.spinner{width:24px;height:24px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ─── 計算ボックス ─── */
+.calc-box{background:rgba(87,115,88,.07);border:1px solid rgba(87,115,88,.22);border-radius:var(--r);padding:13px;margin-bottom:14px;display:none}
+.calc-label{font-size:11px;color:var(--accent2);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+.calc-val{font-size:22px;font-weight:800;color:var(--text);font-family:var(--mono)}
+/* ─── ページャー ─── */
+.pager{display:flex;align-items:center;gap:6px;margin-top:16px;justify-content:flex-end}
+.pager span{font-size:13px;color:var(--muted);margin-right:8px}
+.pager-btn{width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.pager-btn:hover{background:var(--surface2);color:var(--text)}
+.pager-btn.active{background:var(--accent2);color:#ffffff;border-color:var(--accent2)}
+/* ─── アクティビティ ─── */
+.act-item{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid rgba(220,213,197,.7)}
+.act-item:last-child{border-bottom:none}
+.act-dot{width:9px;height:9px;border-radius:50%;background:var(--accent2);margin-top:5px;flex-shrink:0}
+.act-dot.out{background:var(--danger)}
+.act-dot.loss{background:var(--muted)}
+/* ─── クイックタップボタン（資材消費） ─── */
+.qtap-btn{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--soft);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;min-height:36px;min-width:52px}
+.qtap-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--border2)}
+.qtap-btn.plus{border-color:rgba(30,130,76,.3);color:var(--accent2)}
+.qtap-btn.plus:hover{background:rgba(30,130,76,.1)}
+.qtap-btn.minus{border-color:rgba(192,57,43,.3);color:var(--danger)}
+.qtap-btn.minus:hover{background:rgba(192,57,43,.08)}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#9aab9c;border-radius:99px}
+@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}}
+/* ─── 棚卸スタイル（シニア対応強化） ─── */
+.stocktake-row td{transition:background .1s}
+.stocktake-row.diff-plus td{background:rgba(87,115,88,.07)}
+.stocktake-row.diff-minus td{background:rgba(192,57,43,.06)}
+.stocktake-input{width:90px;background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:6px 9px;font-family:var(--mono);font-size:15px;font-weight:600;text-align:right;outline:none;transition:border-color .15s}
+.stocktake-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(193,122,59,.18)}
+.stocktake-input.changed{border-color:var(--warn);background:rgba(211,84,0,.08);color:var(--warn)}
+.diff-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:99px;font-family:var(--mono);font-size:13px;font-weight:700;min-width:58px;justify-content:center}
+.diff-badge.plus{background:rgba(87,115,88,.12);color:#2d4a2e;border:1px solid rgba(87,115,88,.3)}
+.diff-badge.minus{background:rgba(192,57,43,.12);color:#7b1f16;border:1px solid rgba(192,57,43,.28)}
+.diff-badge.zero{background:rgba(125,146,120,.1);color:var(--muted);border:1px solid rgba(125,146,120,.2)}
+.st-progress{height:6px;background:var(--border);border-radius:99px;margin-top:6px}
+.st-progress-bar{height:100%;background:var(--accent2);border-radius:99px;transition:width .3s}
+.st-session-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;font-size:13px;font-weight:600;background:rgba(87,115,88,.12);color:#2d4a2e;border:1px solid rgba(87,115,88,.3)}
+.st-hist-item{padding:13px 16px;border-bottom:1px solid rgba(220,213,197,.7);display:flex;align-items:center;gap:14px}
+.st-hist-item:last-child{border-bottom:none}
+
+/* ─── 編集ボタン行のスタイル ─── */
+.edit-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;min-height:32px;transition:all .15s}
+.edit-btn:hover{transform:translateY(-1px)}
+/* 行ホバー時に編集ボタンを強調 */
+tr:hover .edit-btn{opacity:1}
+.edit-btn{opacity:.75}
+
+/* ─── 添付ファイル（納品書・写真）UI ─── */
+.attach-zone{border:2px dashed var(--border2);border-radius:var(--r2);padding:20px 18px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);position:relative}
+.attach-zone:hover,.attach-zone.drag-over{border-color:var(--accent);background:rgba(193,122,59,.07)}
+.attach-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.attach-zone-icon{font-size:28px;margin-bottom:8px}
+.attach-zone-text{font-size:13px;color:var(--muted);line-height:1.6}
+.attach-zone-text strong{color:var(--accent);font-weight:700}
+.attach-preview-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.attach-thumb{position:relative;width:88px;height:88px;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--border);background:var(--surface2);flex-shrink:0;cursor:pointer}
+.attach-thumb img{width:100%;height:100%;object-fit:cover}
+.attach-thumb.pdf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.attach-thumb.pdf-card .pdf-icon{font-size:26px}
+.attach-thumb.pdf-card .pdf-name{font-size:9px;color:var(--muted);text-align:center;padding:0 4px;word-break:break-all;line-height:1.3;max-height:32px;overflow:hidden}
+.attach-del{position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:rgba(192,57,43,.85);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2}
+.attach-del:hover{background:var(--danger)}
+/* 在庫一覧の納品書アイコン */
+.doc-icon-btn{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:6px;font-size:12px;cursor:pointer;border:1.5px solid rgba(193,122,59,.3);background:rgba(193,122,59,.08);color:var(--accent);font-weight:700;transition:all .15s;white-space:nowrap}
+.doc-icon-btn:hover{background:rgba(193,122,59,.16);border-color:var(--accent)}
+.doc-icon-btn.no-doc{border-color:var(--border);background:transparent;color:var(--muted);cursor:default}
+/* 添付ビューアモーダル */
+.viewer-img-wrap{text-align:center;padding:8px}
+.viewer-img-wrap img{max-width:100%;max-height:60vh;border-radius:var(--r);border:1px solid var(--border)}
+.viewer-thumb-row{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0 4px}
+.viewer-thumb{width:60px;height:60px;border-radius:8px;overflow:hidden;border:2px solid transparent;cursor:pointer;flex-shrink:0}
+.viewer-thumb.active{border-color:var(--accent)}
+.viewer-thumb img{width:100%;height:100%;object-fit:cover}
+.viewer-thumb.pdf-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface2);font-size:20px;gap:2px}
+.viewer-thumb.pdf-mini span{font-size:8px;color:var(--muted)}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo">
+    <h1>🌲 withWoodStock</h1>
+    <p>withWoodStock 木材在庫管理</p>
+  </div>
+  <div class="nav">
+    <div class="nav-sec">メイン</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>ダッシュボード
+    </div>
+    <div class="nav-item" onclick="showPage('inventory')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>在庫一覧
+    </div>
+    <div class="nav-sec">取引</div>
+    <div class="nav-item" onclick="showPage('receive')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>入庫登録
+    </div>
+    <div class="nav-item" onclick="showPage('ship')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>売上・出庫
+    </div>
+    <div class="nav-item" onclick="showPage('process')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>加工・破損登録
+    </div>
+    <div class="nav-sec">管理</div>
+    <div class="nav-item" onclick="showPage('cost')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>原価管理
+    </div>
+    <div class="nav-item" onclick="showPage('orders')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>発注管理
+    </div>
+    <div class="nav-item" onclick="showPage('monthly')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>月次在庫確認
+    </div>
+    <div class="nav-item" onclick="showPage('pdf')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>納品書読取(AI)
+    </div>
+    <div class="nav-item" onclick="showPage('stocktake')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>棚卸
+    </div>
+    <div class="nav-sec">システム</div>
+    <div class="nav-item" onclick="showPage('p-settings')" id="nav-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>☁ クラウド同期設定
+    </div>
+  </div>
+</nav>
+<div class="main">
+  <div class="topbar">
+    <h2 id="page-title">📊 ダッシュボード</h2>
+    <div class="topbar-right">
+      <span id="today-date" style="font-size:11px;color:var(--muted);font-family:var(--mono)"></span>
+      <span class="badge badge-green" id="stock-status">在庫正常</span>
+      <span id="sync-status-badge" onclick="showPage('p-settings')" title="クラウド同期設定" style="cursor:pointer;font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:rgba(97,83,65,.08);color:var(--muted)">⚙ 未設定</span>
+    </div>
+  </div>
+  <div class="content">
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">総在庫本数</div><div class="kpi-value" id="k-total">0</div><div class="kpi-sub" id="k-tsub">本</div></div>
+    <div class="kpi"><div class="kpi-label">完成品 在庫</div><div class="kpi-value" id="k-finished" style="color:var(--accent2)">0</div><div class="kpi-sub">本</div></div>
+    <div class="kpi"><div class="kpi-label">未完成品 在庫</div><div class="kpi-value" id="k-unfinished" style="color:var(--warn)">0</div><div class="kpi-sub">本</div></div>
+    <div class="kpi"><div class="kpi-label">🔩 社内資材 在庫</div><div class="kpi-value" id="k-material" style="color:var(--material)">0</div><div class="kpi-sub">本</div></div>
+    <div class="kpi"><div class="kpi-label">在庫金額合計</div><div class="kpi-value" id="k-value" style="font-size:18px">¥0</div><div class="kpi-sub">税別</div></div>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">今日の入庫本数</div><div class="kpi-value" id="k-in" style="color:var(--accent2)">0</div><div class="kpi-sub up">本</div></div>
+    <div class="kpi"><div class="kpi-label">今日の出庫本数</div><div class="kpi-value" id="k-out" style="color:var(--danger)">0</div><div class="kpi-sub down">本</div></div>
+    <div class="kpi"><div class="kpi-label">今月の仕入金額</div><div class="kpi-value" id="k-incost" style="font-size:18px">¥0</div><div class="kpi-sub">今月累計・税別</div></div>
+    <div class="kpi"><div class="kpi-label">今月の売上金額</div><div class="kpi-value" id="k-sales" style="font-size:18px;color:var(--accent)">¥0</div><div class="kpi-sub">今月累計・税別</div></div>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">今月の加工・破損</div><div class="kpi-value" id="k-loss" style="color:var(--warn)">0</div><div class="kpi-sub">本（損失）</div></div>
+    <div class="kpi"><div class="kpi-label">在庫品目数</div><div class="kpi-value" id="k-items">0</div><div class="kpi-sub">種類</div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="card"><div class="card-title">📈 在庫本数の推移（直近10日）</div><div style="position:relative;height:200px"><canvas id="trendChart"></canvas></div></div>
+    <div class="card"><div class="card-title">💰 樹種別 在庫金額の割合</div><div style="position:relative;height:170px"><canvas id="speciesChart"></canvas></div><div id="sp-legend" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;font-size:10px"></div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="card"><div class="card-title">🏭 倉庫ごとの在庫本数</div><div style="position:relative;height:180px"><canvas id="whChart"></canvas></div></div>
+    <div class="card"><div class="card-title">📌 今日の入出庫記録</div><div id="act-list"><p style="color:var(--muted);font-size:12px">データなし</p></div></div>
+  </div>
+</div>
+
+<!-- INVENTORY -->
+<div class="page" id="page-inventory">
+  <div class="toolbar">
+    <div class="swrap"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="樹種・等級・寸法・倉庫で検索..." id="inv-q" oninput="filterInv()"></div>
+    <select id="inv-wh" onchange="filterInv()"><option value="">全倉庫</option><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select>
+    <select id="inv-sp" onchange="filterInv()"><option value="">全樹種</option><option>杉</option><option>桧</option><option>RW</option></select>
+    <select id="inv-status" onchange="filterInv()"><option value="">🔍 すべての木材を表示</option><option value="完成品">✅ 完成品のみ</option><option value="未完成品">🪵 未完成品のみ</option><option value="社内資材">🔩 社内資材のみ</option></select>
+    <button class="btn btn-primary btn-sm" onclick="openModal('m-receive')">+ 入庫</button>
+    <button class="btn btn-sm" style="background:rgba(193,122,59,.12);color:var(--accent);border:1.5px solid rgba(193,122,59,.3);font-weight:700;min-height:34px;padding:7px 13px;font-size:13px" onclick="openNewInvModal()" title="新規品目を追加">＋ 新規品目</button>
+    <button class="btn btn-outline btn-sm" onclick="exportInvCSV()">CSV出力</button>
+  </div>
+  <div class="table-wrap">
+    <table><thead><tr><th>区分</th><th>倉庫</th><th>樹種</th><th>等級</th><th>W</th><th>H</th><th>L</th><th>在庫本数</th><th>今日入庫</th><th>今日出庫</th><th>単価</th><th>在庫金額</th><th>材積/本</th><th>備考</th><th style="text-align:center;white-space:nowrap">📎 書類</th><th style="text-align:center;white-space:nowrap">操作</th></tr></thead>
+    <tbody id="inv-tbody"></tbody></table>
+  </div>
+  <div class="pager" id="inv-pager"></div>
+</div>
+
+<!-- RECEIVE -->
+<div class="page" id="page-receive">
+  <div style="max-width:680px">
+    <div class="alert alert-info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>📄 納品書（PDF）がある場合は「納品書をAIで読取」から自動入力もできます</div>
+    <div class="card">
+      <div class="card-title">📥 入庫登録</div>
+      <div class="form-row"><div class="fg"><label>入庫日</label><input type="date" id="r-date"></div><div class="fg"><label>倉庫</label><select id="r-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>仕入先</label><input type="text" id="r-sup" placeholder="例：上野木材、外山木材など"></div><div class="fg"><label>木材の種別</label><select id="r-status"><option value="完成品">✅ 完成品（売り物）</option><option value="未完成品">🪵 未完成品（乾燥中など）</option><option value="社内資材">🔩 社内資材（桟木・消耗品）</option></select></div></div>
+      <div class="form-row3"><div class="fg"><label>樹種</label><select id="r-sp"><option>杉</option><option>桧</option><option>RW</option><option>土佐杉</option><option>米松</option><option>その他</option></select></div><div class="fg"><label>等級・品目</label><select id="r-gr"><option>AD</option><option>KD</option><option>PD</option><option>LVL</option><option>GRN</option><option>集成材</option><option>その他</option></select></div><div class="fg"><label>W (mm)</label><input type="number" id="r-w" placeholder="105"></div></div>
+      <div class="form-row"><div class="fg"><label>H (mm)</label><input type="number" id="r-h" placeholder="105"></div><div class="fg"><label>L (mm)</label><input type="number" id="r-l" placeholder="3000"></div></div>
+      <div class="form-row"><div class="fg"><label>本数</label><input type="number" id="r-qty" placeholder="420" oninput="calcRec()"></div><div class="fg"><label>単価（円/本・税別）</label><input type="number" id="r-price" placeholder="65000" oninput="calcRec()"></div></div>
+      <div class="fg"><label>備考（邸名・伝票Noなど）</label><input type="text" id="r-note" placeholder="例：堂元様邸、伝票No.89"></div>
+      <div class="calc-box" id="r-calc"><div class="calc-label">入庫金額（税別）</div><div class="calc-val" id="r-calc-val">¥0</div></div>
+      <!-- 添付ファイル（納品書・写真） -->
+      <div class="fg">
+        <label>📎 納品書・写真を添付（任意）</label>
+        <div class="attach-zone" id="r-attach-zone" ondragover="attachDragOver(event,'r')" ondrop="attachDrop(event,'r')" ondragleave="attachDragLeave('r')">
+          <input type="file" id="r-file-input" accept="image/*,.pdf" multiple onchange="attachFilePicked(event,'r')">
+          <div class="attach-zone-icon">📄</div>
+          <div class="attach-zone-text">納品書（PDF）や写真をドラッグ＆ドロップ<br>または<strong>クリックしてファイル選択</strong><br><span style="font-size:11px;color:var(--muted)">PDF・JPG・PNG・HEIC など複数選択可</span></div>
+        </div>
+        <div class="attach-preview-grid" id="r-preview"></div>
+      </div>
+      <div style="display:flex;gap:10px"><button class="btn btn-success" style="flex:1" onclick="saveReceive()">✓ 入庫を登録する</button><button class="btn btn-outline" onclick="clearRecForm()">クリア</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- SHIP -->
+<div class="page" id="page-ship">
+  <div style="max-width:680px">
+    <div class="tabs"><div class="tab active" onclick="shipTab('sale')">売上出庫</div><div class="tab" onclick="shipTab('other')">その他出庫</div></div>
+    <div class="card" id="ship-sale">
+      <div class="card-title">売上出庫登録</div>
+      <div class="form-row"><div class="fg"><label>請求日</label><input type="date" id="sl-date"></div><div class="fg"><label>売上先</label><input type="text" id="sl-dest" placeholder="例：WITHDOM Kagoshima"></div></div>
+      <div class="form-row"><div class="fg"><label>邸名</label><input type="text" id="sl-house" placeholder="例：堂元様邸"></div><div class="fg"><label>区分</label><select id="sl-div"><option>土台</option><option>大引き</option><option>桁・梁</option><option>通し柱</option><option>管柱</option><option>垂木</option><option>間柱</option><option>母屋</option><option>筋違</option><option>その他</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>倉庫</label><select id="sl-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div><div class="fg"><label>樹種</label><select id="sl-sp"><option>杉</option><option>桧</option><option>RW</option><option>米松</option><option>その他</option></select></div></div>
+      <div class="form-row3"><div class="fg"><label>W</label><input type="number" id="sl-w"></div><div class="fg"><label>H</label><input type="number" id="sl-h"></div><div class="fg"><label>L</label><input type="number" id="sl-l"></div></div>
+      <div class="form-row"><div class="fg"><label>本数</label><input type="number" id="sl-qty" oninput="calcSale()"></div><div class="fg"><label>売上単価（円/本・税別）</label><input type="number" id="sl-price" oninput="calcSale()"></div></div>
+      <div class="calc-box" id="sl-calc"><div class="calc-label">売上金額（税別）</div><div class="calc-val" id="sl-calc-val">¥0</div></div>
+      <!-- 添付ファイル（出荷写真・伝票） -->
+      <div class="fg">
+        <label>📎 出荷写真・伝票を添付（任意）</label>
+        <div class="attach-zone" id="sl-attach-zone" ondragover="attachDragOver(event,'sl')" ondrop="attachDrop(event,'sl')" ondragleave="attachDragLeave('sl')">
+          <input type="file" id="sl-file-input" accept="image/*,.pdf" multiple onchange="attachFilePicked(event,'sl')">
+          <div class="attach-zone-icon">📸</div>
+          <div class="attach-zone-text">出荷写真や伝票をドラッグ＆ドロップ<br>または<strong>クリックしてファイル選択</strong></div>
+        </div>
+        <div class="attach-preview-grid" id="sl-preview"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="saveSale()">売上出庫を登録する</button>
+    </div>
+    <div class="card" id="ship-other" style="display:none">
+      <div class="card-title">その他出庫（倉庫間移動・返品など）</div>
+      <div class="form-row"><div class="fg"><label>出庫日</label><input type="date" id="ot-date"></div><div class="fg"><label>出庫理由</label><select id="ot-reason"><option>倉庫間移動</option><option>返品</option><option>社内使用</option><option>その他</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>出庫元倉庫</label><select id="ot-from"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div><div class="fg"><label>移動先倉庫</label><select id="ot-to"><option>-</option><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+      <div class="form-row3"><div class="fg"><label>樹種</label><select id="ot-sp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>W</label><input type="number" id="ot-w"></div><div class="fg"><label>H</label><input type="number" id="ot-h"></div></div>
+      <div class="form-row"><div class="fg"><label>L</label><input type="number" id="ot-l"></div><div class="fg"><label>本数</label><input type="number" id="ot-qty"></div></div>
+      <div class="fg"><label>備考</label><input type="text" id="ot-note"></div>
+      <button class="btn btn-outline" style="width:100%" onclick="saveOther()">出庫を登録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROCESS -->
+<div class="page" id="page-process">
+  <div style="max-width:680px">
+    <div class="tabs"><div class="tab active" onclick="procTab('proc')">🔧 加工指示</div><div class="tab" onclick="procTab('loss')">💥 破損・ロス</div><div class="tab" onclick="procTab('adj')">📊 在庫調整</div><div class="tab" onclick="procTab('consume')">🔩 資材消費</div></div>
+    <div id="pf-proc">
+      <div class="card">
+        <div class="card-title">加工指示登録</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:14px">加工前の材をマイナスし、加工後の規格をプラスします</p>
+        <div class="form-row"><div class="fg"><label>加工日</label><input type="date" id="p-date"></div><div class="fg"><label>倉庫</label><select id="p-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+        <div style="background:rgba(192,57,43,.06);border:1px solid rgba(192,57,43,.2);border-radius:var(--r);padding:14px;margin-bottom:14px">
+          <div style="font-size:10px;color:var(--danger);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">加工前（マイナス）</div>
+          <div class="form-row3"><div class="fg"><label>樹種</label><select id="p-fsp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>W</label><input type="number" id="p-fw"></div><div class="fg"><label>H</label><input type="number" id="p-fh"></div></div>
+          <div class="form-row"><div class="fg"><label>L</label><input type="number" id="p-fl"></div><div class="fg"><label>本数（マイナス）</label><input type="number" id="p-fqty"></div></div>
+        </div>
+        <div style="background:rgba(30,130,76,.06);border:1px solid rgba(30,130,76,.2);border-radius:var(--r);padding:14px;margin-bottom:14px">
+          <div style="font-size:10px;color:var(--accent2);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">加工後（プラス）</div>
+          <div class="form-row3"><div class="fg"><label>樹種</label><select id="p-tsp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>W</label><input type="number" id="p-tw"></div><div class="fg"><label>H</label><input type="number" id="p-th"></div></div>
+          <div class="form-row"><div class="fg"><label>L</label><input type="number" id="p-tl"></div><div class="fg"><label>本数（プラス）</label><input type="number" id="p-tqty"></div></div>
+        </div>
+        <div class="fg"><label>備考</label><input type="text" id="p-note"></div>
+        <button class="btn btn-warn" style="width:100%" onclick="saveProc()">加工指示を登録する</button>
+      </div>
+    </div>
+    <div id="pf-loss" style="display:none">
+      <div class="card">
+        <div class="card-title">破損・ロス登録</div>
+        <div class="form-row"><div class="fg"><label>発生日</label><input type="date" id="l-date"></div><div class="fg"><label>倉庫</label><select id="l-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+        <div class="form-row"><div class="fg"><label>樹種</label><select id="l-sp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>種別</label><select id="l-type"><option>破損</option><option>割れ・欠け</option><option>品質不良</option><option>数量誤差</option><option>その他ロス</option></select></div></div>
+        <div class="form-row3"><div class="fg"><label>W</label><input type="number" id="l-w"></div><div class="fg"><label>H</label><input type="number" id="l-h"></div><div class="fg"><label>L</label><input type="number" id="l-l"></div></div>
+        <div class="form-row"><div class="fg"><label>本数（マイナス）</label><input type="number" id="l-qty"></div><div class="fg"><label>備考</label><input type="text" id="l-note" placeholder="原因・状況"></div></div>
+        <button class="btn btn-danger" style="width:100%" onclick="saveLoss()">破損・ロスを登録する</button>
+      </div>
+    </div>
+    <div id="pf-adj" style="display:none">
+      <div class="card">
+        <div class="card-title">月末在庫調整</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:14px">実棚卸後の数量補正（+/-両方可）</p>
+        <div class="form-row"><div class="fg"><label>調整日</label><input type="date" id="adj-date"></div><div class="fg"><label>倉庫</label><select id="adj-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+        <div class="form-row3"><div class="fg"><label>樹種</label><select id="adj-sp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>W</label><input type="number" id="adj-w"></div><div class="fg"><label>H</label><input type="number" id="adj-h"></div></div>
+        <div class="form-row"><div class="fg"><label>L</label><input type="number" id="adj-l"></div><div class="fg"><label>調整数量（±）</label><input type="number" id="adj-qty" placeholder="+10 または -5"></div></div>
+        <div class="fg"><label>備考</label><input type="text" id="adj-note" placeholder="棚卸差異・理由"></div>
+        <button class="btn btn-outline" style="width:100%" onclick="saveAdj()">在庫調整を登録する</button>
+      </div>
+    </div>
+    <div id="pf-consume" style="display:none">
+      <div class="card">
+        <div class="card-title">🔩 資材消費登録（他勘定振替）</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">商品在庫を桟木・台木・梱包材などとして社内消費する場合に登録します。在庫が減算され、費用として記録されます。</p>
+        <div class="form-row"><div class="fg"><label>消費日</label><input type="date" id="cs-date"></div><div class="fg"><label>倉庫</label><select id="cs-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+        <div class="form-row"><div class="fg"><label>樹種</label><select id="cs-sp"><option>杉</option><option>桧</option><option>RW</option></select></div><div class="fg"><label>等級</label><select id="cs-gr"><option>AD</option><option>KD</option><option>PD</option><option>LVL</option><option>集成材</option></select></div></div>
+        <div class="form-row3"><div class="fg"><label>W (mm)</label><input type="number" id="cs-w" placeholder="105"></div><div class="fg"><label>H (mm)</label><input type="number" id="cs-h" placeholder="105"></div><div class="fg"><label>L (mm)</label><input type="number" id="cs-l" placeholder="3000"></div></div>
+        <div class="fg"><label>消費本数</label>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <input type="number" id="cs-qty" placeholder="本数を入力" style="width:140px;background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:var(--r);padding:10px 14px;font-size:15px;font-family:var(--font);outline:none">
+            <button class="qtap-btn plus" onclick="adjustQty('cs-qty',5)">＋5</button>
+            <button class="qtap-btn plus" onclick="adjustQty('cs-qty',10)">＋10</button>
+            <button class="qtap-btn minus" onclick="adjustQty('cs-qty',-5)">－5</button>
+            <button class="qtap-btn minus" onclick="adjustQty('cs-qty',-10)">－10</button>
+          </div>
+        </div>
+        <div class="fg"><label>消費用途</label><select id="cs-use"><option>桟木（乾燥用）</option><option>台木</option><option>梱包材</option><option>試験材</option><option>現場端材</option><option>その他</option></select></div>
+        <div class="fg"><label>備考</label><input type="text" id="cs-note" placeholder="用途詳細など"></div>
+        <div class="calc-box" id="cs-calc"><div class="calc-label">消費金額（他勘定振替額）</div><div class="calc-val" id="cs-calc-val">¥0</div></div>
+        <button class="btn btn-warn" style="width:100%" onclick="saveConsume()">🔩 資材消費を登録する</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">加工・破損・調整・資材消費 履歴</div>
+      <div class="table-wrap" style="border:none"><table><thead><tr><th>日付</th><th>種別</th><th>品目</th><th>数量</th><th>倉庫</th><th>備考</th></tr></thead><tbody id="proc-hist"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- COST -->
+<div class="page" id="page-cost">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">商品在庫金額（商品のみ）</div><div class="kpi-value" id="c-total" style="font-size:18px">¥0</div><div class="kpi-sub">社内資材を除く・税別</div></div>
+    <div class="kpi"><div class="kpi-label">今月の仕入金額</div><div class="kpi-value" id="c-inm" style="font-size:18px">¥0</div><div class="kpi-sub up">今月累計</div></div>
+    <div class="kpi"><div class="kpi-label">今月の売上金額</div><div class="kpi-value" id="c-salem" style="font-size:18px;color:var(--accent)">¥0</div><div class="kpi-sub">今月累計</div></div>
+    <div class="kpi"><div class="kpi-label">今月の粗利</div><div class="kpi-value" id="c-profit" style="font-size:18px;color:var(--accent2)">¥0</div><div class="kpi-sub">売上 − 仕入原価</div></div>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)">
+    <div class="kpi"><div class="kpi-label">🔩 今月の資材消費額</div><div class="kpi-value" id="c-material" style="font-size:18px;color:var(--material)">¥0</div><div class="kpi-sub">社内資材入庫 ＋ 他勘定振替</div></div>
+    <div class="kpi"><div class="kpi-label">今月の粗利率</div><div class="kpi-value" id="c-margin" style="font-size:18px;color:var(--accent2)">—</div><div class="kpi-sub">粗利 ÷ 売上金額</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">原価一覧（商品番号別）</div>
+        <input type="text" placeholder="商品番号・樹種で絞り込み..." id="cost-q" oninput="filterCost()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--r);padding:7px 11px;font-size:12px;font-family:var(--font);outline:none;width:100%;margin-bottom:10px">
+        <div style="max-height:340px;overflow-y:auto">
+          <table><thead><tr><th>商品番号</th><th>在庫数</th><th>単価</th><th>在庫金額</th><th>材積計</th></tr></thead><tbody id="cost-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">単価更新</div>
+        <div class="fg"><label>商品番号を選択</label><select id="c-sel"><option value="">選択してください...</option></select></div>
+        <div class="form-row"><div class="fg"><label>新しい単価（円/本）</label><input type="number" id="c-newprice" placeholder="65000"></div><div class="fg"><label>適用日</label><input type="date" id="c-prdate"></div></div>
+        <button class="btn btn-primary" style="width:100%" onclick="updatePrice()">単価を更新する</button>
+      </div>
+      <div class="card">
+        <div class="card-title">月次サマリー（4月末）</div>
+        <table style="margin-top:6px"><thead><tr><th>項目</th><th>金額（税別）</th></tr></thead><tbody id="m-summary"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ORDERS -->
+<div class="page" id="page-orders">
+  <div class="toolbar">
+    <div class="swrap"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="仕入先・材種で検索..." id="ord-q" oninput="filterOrd()"></div>
+    <select id="ord-sf" onchange="filterOrd()"><option value="">全状態</option><option>発注済</option><option>納品待ち</option><option>完了</option></select>
+    <button class="btn btn-primary btn-sm" onclick="openModal('m-order')">発注追加</button>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th>発注日</th><th>仕入先</th><th>材種</th><th>等級</th><th>寸法</th><th>本数</th><th>納品場所</th><th>納期</th><th>金額</th><th>状態</th><th style="text-align:center">操作</th></tr></thead><tbody id="ord-tbody"></tbody></table></div>
+</div>
+
+<!-- MONTHLY -->
+<div class="page" id="page-monthly">
+  <div class="toolbar">
+    <select id="m-month" onchange="renderMonthly()"><option value="4">2026年4月</option><option value="3">2026年3月</option><option value="2">2026年2月</option></select>
+    <div class="swrap" style="max-width:280px"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="商品番号で検索..." id="m-q" oninput="renderMonthly()"></div>
+    <button class="btn btn-outline btn-sm" onclick="exportMonCSV()">CSV出力</button>
+  </div>
+  <div class="kpi-grid" style="margin-bottom:16px">
+    <div class="kpi"><div class="kpi-label">月末在庫金額</div><div class="kpi-value" id="m-invval" style="font-size:16px">¥0</div></div>
+    <div class="kpi"><div class="kpi-label">月次入庫金額</div><div class="kpi-value" id="m-inval" style="font-size:16px">¥0</div></div>
+    <div class="kpi"><div class="kpi-label">月次売上金額</div><div class="kpi-value" id="m-saleval" style="font-size:16px;color:var(--accent)">¥0</div></div>
+    <div class="kpi"><div class="kpi-label">加工・差異本数</div><div class="kpi-value" id="m-lossval" style="font-size:16px;color:var(--warn)">0本</div></div>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th>商品番号</th><th>前月末</th><th>入庫</th><th>売上</th><th>加工</th><th>月末差異</th><th>月末在庫</th><th>材積</th><th>入庫金額</th><th>売上金額</th><th>在庫金額</th></tr></thead><tbody id="m-tbody"></tbody></table></div>
+</div>
+
+<!-- PDF -->
+<div class="page" id="page-pdf">
+  <div style="max-width:720px">
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">納品書PDF → AI自動入力</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:18px">PDFをアップロードするとAIが品目・本数・単価・金額を自動抽出し、入庫シートへ追加します</p>
+      <div class="pdf-drop" id="pdf-drop" onclick="document.getElementById('pdf-input').click()" ondragover="pdfDragOver(event)" ondrop="pdfDrop(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:40px;height:40px;color:var(--muted);display:block;margin:0 auto"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <p>PDFをドラッグ＆ドロップ、または</p><p style="margin-top:6px"><span>クリックしてファイルを選択</span></p>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px">対応: 納品書・請求書・受領書（PDF形式）</p>
+      </div>
+      <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="handlePDF(event)">
+      <div class="pdf-loading" id="pdf-loading"><div class="spinner"></div><p style="color:var(--muted);font-size:12px">AIが納品書を解析中...</p></div>
+      <div id="pdf-result"></div>
+    </div>
+    <div class="card"><div class="card-title">読取履歴</div><div id="pdf-hist"><p style="font-size:12px;color:var(--muted)">まだ読取履歴がありません</p></div></div>
+  </div>
+</div>
+
+<!-- STOCKTAKE 棚卸 -->
+<div class="page" id="page-stocktake">
+  <!-- セッション情報バー -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="st-session-badge" id="st-session-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span id="st-session-name">棚卸未開始</span>
+      </span>
+      <span style="font-size:11px;color:var(--muted)" id="st-session-date"></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="openModal('m-st-new')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        新規棚卸開始
+      </button>
+      <button class="btn btn-warn btn-sm" id="st-complete-btn" onclick="completeStocktake()" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M9 11l3 3L22 4"/></svg>
+        棚卸を確定する
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="exportStCSV()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV出力
+      </button>
+    </div>
+  </div>
+
+  <!-- 進捗バー -->
+  <div id="st-progress-wrap" style="display:none;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px">
+      <span>入力進捗</span>
+      <span id="st-progress-txt">0 / 0 品目</span>
+    </div>
+    <div class="st-progress"><div class="st-progress-bar" id="st-progress-bar" style="width:0%"></div></div>
+  </div>
+
+  <!-- KPIサマリー（棚卸中のみ表示）-->
+  <div id="st-kpi-wrap" style="display:none">
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi"><div class="kpi-label">入力済み品目</div><div class="kpi-value" id="st-k-done" style="color:var(--accent2)">0</div><div class="kpi-sub">品目</div></div>
+      <div class="kpi"><div class="kpi-label">差異あり</div><div class="kpi-value" id="st-k-diff" style="color:var(--warn)">0</div><div class="kpi-sub">品目</div></div>
+      <div class="kpi"><div class="kpi-label">プラス差異計</div><div class="kpi-value" id="st-k-plus" style="color:var(--accent2);font-size:18px">+0</div><div class="kpi-sub">本</div></div>
+      <div class="kpi"><div class="kpi-label">マイナス差異計</div><div class="kpi-value" id="st-k-minus" style="color:var(--danger);font-size:18px">0</div><div class="kpi-sub">本</div></div>
+    </div>
+  </div>
+
+  <!-- フィルター -->
+  <div class="toolbar" id="st-toolbar">
+    <div class="swrap"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="品目・倉庫で絞り込み..." id="st-q" oninput="renderStocktake()"></div>
+    <select id="st-wh-f" onchange="renderStocktake()">
+      <option value="">全倉庫</option>
+      <option>重点管理</option><option>犬迫</option><option>松元</option>
+      <option>小野</option><option>WB所有</option><option>福田</option>
+    </select>
+    <select id="st-status-f" onchange="renderStocktake()">
+      <option value="">すべての木材</option>
+      <option value="完成品">✅ 完成品のみ</option>
+      <option value="未完成品">🪵 未完成品のみ</option>
+      <option value="社内資材">🔩 社内資材のみ</option>
+    </select>
+    <select id="st-diff-f" onchange="renderStocktake()">
+      <option value="">全品目</option>
+      <option value="diff">差異あり</option>
+      <option value="undone">未入力</option>
+    </select>
+  </div>
+
+  <!-- メインテーブル -->
+  <div class="table-wrap" id="st-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>区分</th><th>倉庫</th><th>樹種</th><th>等級</th><th>W</th><th>H</th><th>L</th>
+          <th>帳簿在庫</th><th>実棚数量<span style="color:var(--accent);margin-left:4px">※入力</span></th>
+          <th>差異</th><th>差異率</th><th>備考</th>
+        </tr>
+      </thead>
+      <tbody id="st-tbody"></tbody>
+    </table>
+  </div>
+  <div id="st-empty" style="padding:40px;text-align:center;color:var(--muted);font-size:13px;display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;margin:0 auto 12px;display:block"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    「新規棚卸開始」ボタンから棚卸セッションを開始してください
+  </div>
+
+  <!-- 棚卸履歴 -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">棚卸履歴</div>
+    <div id="st-hist-list">
+      <p style="font-size:12px;color:var(--muted)">棚卸履歴がありません</p>
+    </div>
+  </div>
+</div>
+
+  </div>
+</div>
+
+
+<!-- ☁ クラウド同期設定ページ -->
+<div class="page" id="p-settings">
+  <div class="card" style="max-width:640px">
+    <div class="card-title" style="font-size:18px;margin-bottom:4px">☁ クラウド同期設定</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.6">
+      Google Apps Script のURLを設定すると、どのパソコン・スマホ・ブラウザからでも<br>
+      <strong>同じデータにアクセス</strong>できるようになります。
+    </p>
+    <!-- 現在の状態 -->
+    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">現在の同期状態</div>
+      <div id="settings-sync-status" style="font-size:15px;font-weight:700;color:var(--text)">確認中...</div>
+    </div>
+    <!-- URL入力 -->
+    <div class="fg">
+      <label>Google Apps Script の URL</label>
+      <input type="url" id="settings-gas-url" placeholder="https://script.google.com/macros/s/..." style="font-size:14px;font-family:var(--mono)">
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">設定手順書を見ながら取得したURLをここに貼り付けてください</p>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:24px">
+      <button class="btn btn-primary" style="flex:2" onclick="applySettingsUrl()">☁ このURLで接続する</button>
+      <button class="btn btn-outline" style="flex:1" onclick="testSync()">接続テスト</button>
+    </div>
+    <div style="border-top:1.5px solid var(--border);margin:24px 0"></div>
+    <div class="card-title" style="font-size:15px;margin-bottom:14px">手動操作</div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <button class="btn btn-outline" onclick="manualSync()">⟳ 今すぐ同期する</button>
+      <button class="btn btn-outline" onclick="manualSaveNow()">💾 今すぐ保存する</button>
+    </div>
+    <button class="btn" style="background:rgba(192,57,43,.08);color:var(--danger);border:1.5px solid rgba(192,57,43,.25)" onclick="resetAllData()">🗑 全データを初期値にリセットする</button>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+
+<!-- MODALS -->
+
+<!-- 書類ビューアモーダル -->
+<div class="modal-overlay" id="m-doc-viewer">
+  <div class="modal" style="width:700px;max-width:95vw">
+    <div class="modal-header">
+      <h3 id="m-doc-viewer-title">📎 添付書類・写真</h3>
+      <button class="close-btn" onclick="closeModal('m-doc-viewer')">×</button>
+    </div>
+    <div class="modal-body" style="padding:16px 20px">
+      <!-- メイン表示エリア -->
+      <div class="viewer-img-wrap" id="viewer-main">
+        <img id="viewer-main-img" src="" alt="書類プレビュー" style="display:none">
+        <div id="viewer-main-pdf" style="display:none">
+          <iframe id="viewer-pdf-frame" src="" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:var(--r)"></iframe>
+        </div>
+        <div id="viewer-main-empty" style="padding:40px;text-align:center;color:var(--muted);font-size:14px">
+          サムネイルを選んで確認してください
+        </div>
+      </div>
+      <!-- サムネイル行 -->
+      <div class="viewer-thumb-row" id="viewer-thumbs"></div>
+      <!-- ファイル情報 -->
+      <div id="viewer-info" style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span id="viewer-info-name">—</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="viewerDownloadCurrent()" title="ダウンロード">⬇ ダウンロード</button>
+          <button class="btn btn-sm" style="background:rgba(192,57,43,.08);color:var(--danger);border:1.5px solid rgba(192,57,43,.25)" onclick="viewerDeleteCurrent()" title="この書類を削除">🗑 削除</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">
+          ＋ 書類を追加
+          <input type="file" id="viewer-add-file" accept="image/*,.pdf" multiple style="display:none" onchange="viewerAddFiles(event)">
+        </label>
+        <span id="viewer-doc-count" style="font-size:12px;color:var(--muted)">0件</span>
+      </div>
+      <button class="btn btn-outline" onclick="closeModal('m-doc-viewer')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 在庫編集モーダル -->
+<div class="modal-overlay" id="m-edit-inv">
+  <div class="modal" style="width:640px">
+    <div class="modal-header">
+      <h3>✏️ 在庫品目を編集</h3>
+      <button class="close-btn" onclick="closeModal('m-edit-inv')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:rgba(193,122,59,.08);border:1px solid rgba(193,122,59,.2);border-radius:var(--r);padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--soft)">
+        📝 在庫本数・単価・備考など、各項目を直接修正できます。変更後「保存する」を押してください。
+      </div>
+      <input type="hidden" id="ei-id">
+      <div class="form-row">
+        <div class="fg">
+          <label>木材の種別</label>
+          <select id="ei-status">
+            <option value="完成品">✅ 完成品（売り物）</option>
+            <option value="未完成品">🪵 未完成品（乾燥中など）</option>
+            <option value="社内資材">🔩 社内資材（桟木・消耗品）</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>倉庫</label>
+          <select id="ei-wh">
+            <option>重点管理</option><option>犬迫</option><option>松元</option>
+            <option>小野</option><option>WB所有</option><option>福田</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="fg">
+          <label>樹種</label>
+          <select id="ei-sp">
+            <option>杉</option><option>桧</option><option>RW</option>
+            <option>土佐杉</option><option>米松</option><option>その他</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>等級・品目</label>
+          <select id="ei-gr">
+            <option>AD</option><option>KD</option><option>PD</option>
+            <option>LVL</option><option>GRN</option><option>集成材</option><option>その他</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row3">
+        <div class="fg"><label>W (mm)</label><input type="number" id="ei-w" placeholder="105"></div>
+        <div class="fg"><label>H (mm)</label><input type="number" id="ei-h" placeholder="105"></div>
+        <div class="fg"><label>L (mm)</label><input type="number" id="ei-l" placeholder="3000"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg">
+          <label>在庫本数 <span style="color:var(--danger);font-size:11px">※直接変更</span></label>
+          <input type="number" id="ei-stock" placeholder="420">
+        </div>
+        <div class="fg">
+          <label>単価（円/本・税別）</label>
+          <input type="number" id="ei-price" placeholder="65000">
+        </div>
+      </div>
+      <div class="fg">
+        <label>備考（邸名・メモなど）</label>
+        <input type="text" id="ei-note" placeholder="例：堂元様邸、持永5/27納品予定">
+      </div>
+      <div id="ei-calc" style="background:rgba(30,130,76,.07);border:1px solid rgba(30,130,76,.22);border-radius:var(--r);padding:13px;margin-top:4px">
+        <div style="font-size:11px;color:var(--accent2);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px">在庫金額（税別）</div>
+        <div style="font-size:22px;font-weight:800;color:var(--text);font-family:var(--mono)" id="ei-calc-val">¥—</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('m-edit-inv')">キャンセル</button>
+      <button class="btn btn-success" onclick="saveEditInv()">✓ 保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 発注編集モーダル -->
+<div class="modal-overlay" id="m-edit-order">
+  <div class="modal" style="width:600px">
+    <div class="modal-header">
+      <h3>✏️ 発注情報を編集</h3>
+      <button class="close-btn" onclick="closeModal('m-edit-order')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eo-idx">
+      <div class="form-row">
+        <div class="fg"><label>発注日</label><input type="date" id="eo-date"></div>
+        <div class="fg"><label>仕入先</label><input type="text" id="eo-sup" placeholder="例：上野木材"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>材種</label><select id="eo-sp"><option>杉</option><option>桧</option><option>RW</option><option>LVL</option><option>集成材</option></select></div>
+        <div class="fg"><label>等級</label><select id="eo-gr"><option>AD</option><option>KD</option><option>PD</option><option>GRN</option><option>LVL</option><option>集成材</option></select></div>
+      </div>
+      <div class="form-row3">
+        <div class="fg"><label>W</label><input type="number" id="eo-w"></div>
+        <div class="fg"><label>H</label><input type="number" id="eo-h"></div>
+        <div class="fg"><label>L</label><input type="number" id="eo-l"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>本数</label><input type="number" id="eo-qty"></div>
+        <div class="fg"><label>納品場所</label><input type="text" id="eo-dest"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>納期</label><input type="date" id="eo-due"></div>
+        <div class="fg"><label>金額（税別）</label><input type="number" id="eo-amount"></div>
+      </div>
+      <div class="fg">
+        <label>状態</label>
+        <select id="eo-status">
+          <option>発注済</option><option>納品待ち</option><option>完了</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('m-edit-order')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveEditOrder()">✓ 保存する</button>
+    </div>
+  </div>
+</div>
+<!-- 棚卸新規開始モーダル -->
+<div class="modal-overlay" id="m-st-new">
+  <div class="modal">
+    <div class="modal-header"><h3>新規棚卸開始</h3><button class="close-btn" onclick="closeModal('m-st-new')">×</button></div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom:16px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        棚卸を開始すると、現在の帳簿在庫をスナップショットとして記録します。実数を入力後「確定」すると差異が在庫調整として反映されます。
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>棚卸日</label><input type="date" id="st-new-date"></div>
+        <div class="fg"><label>棚卸名称</label><input type="text" id="st-new-name" placeholder="例: 5月末棚卸、週次棚卸etc"></div>
+      </div>
+      <div class="fg"><label>対象倉庫</label>
+        <select id="st-new-wh">
+          <option value="all">全倉庫（一括棚卸）</option>
+          <option>重点管理</option><option>犬迫</option><option>松元</option>
+          <option>小野</option><option>WB所有</option><option>福田</option>
+        </select>
+      </div>
+      <div class="fg"><label>担当者</label><input type="text" id="st-new-person" placeholder="担当者名"></div>
+      <div class="fg"><label>メモ</label><textarea id="st-new-note" rows="2" placeholder="棚卸の目的・注意事項など" style="resize:vertical"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('m-st-new')">キャンセル</button>
+      <button class="btn btn-primary" onclick="startStocktake()">棚卸を開始する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 棚卸確定確認モーダル -->
+<div class="modal-overlay" id="m-st-confirm">
+  <div class="modal">
+    <div class="modal-header"><h3>棚卸確定</h3><button class="close-btn" onclick="closeModal('m-st-confirm')">×</button></div>
+    <div class="modal-body">
+      <div class="alert" id="st-confirm-msg" style="background:rgba(211,84,0,.08);border:1px solid rgba(211,84,0,.25);color:var(--warn)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div id="st-confirm-detail"></div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:12px">差異がある品目を「在庫調整」として記録し、在庫を実棚数量に更新します。この操作は取り消せません。</p>
+      <div class="fg" style="margin-top:14px"><label>確定コメント</label><input type="text" id="st-confirm-note" placeholder="例: 月末棚卸確定、現地確認済み"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('m-st-confirm')">戻る</button>
+      <button class="btn btn-danger" onclick="applyStocktake()">差異を反映して確定</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="m-receive">
+  <div class="modal">
+    <div class="modal-header"><h3>📥 入庫登録</h3><button class="close-btn" onclick="closeModal('m-receive')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="fg"><label>入庫日</label><input type="date" id="mr-date"></div><div class="fg"><label>倉庫</label><select id="mr-wh"><option>重点管理</option><option>犬迫</option><option>松元</option><option>小野</option><option>WB所有</option><option>福田</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>仕入先</label><input type="text" id="mr-sup"></div><div class="fg"><label>木材の種別</label><select id="mr-status"><option value="完成品">✅ 完成品（売り物）</option><option value="未完成品">🪵 未完成品（乾燥中など）</option><option value="社内資材">🔩 社内資材（桟木・消耗品）</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>樹種</label><select id="mr-sp"><option>杉</option><option>桧</option><option>RW</option><option>その他</option></select></div><div class="fg"><label>等級</label><select id="mr-gr"><option>AD</option><option>KD</option><option>PD</option><option>LVL</option><option>集成材</option></select></div></div>
+      <div class="form-row3"><div class="fg"><label>W</label><input type="number" id="mr-w"></div><div class="fg"><label>H</label><input type="number" id="mr-h"></div><div class="fg"><label>L</label><input type="number" id="mr-l"></div></div>
+      <div class="form-row"><div class="fg"><label>本数</label><input type="number" id="mr-qty"></div><div class="fg"><label>単価（円/本）</label><input type="number" id="mr-price"></div></div>
+      <div class="fg"><label>備考</label><input type="text" id="mr-note"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('m-receive')">キャンセル</button><button class="btn btn-success" onclick="saveModalRec()">登録する</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="m-order">
+  <div class="modal">
+    <div class="modal-header"><h3>発注追加</h3><button class="close-btn" onclick="closeModal('m-order')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="fg"><label>発注日</label><input type="date" id="o-date"></div><div class="fg"><label>仕入先</label><input type="text" id="o-sup"></div></div>
+      <div class="form-row"><div class="fg"><label>材種</label><select id="o-sp"><option>杉</option><option>桧</option><option>RW</option><option>LVL</option><option>集成材</option></select></div><div class="fg"><label>等級</label><select id="o-gr"><option>AD</option><option>KD</option><option>PD</option><option>GRN</option><option>LVL</option><option>集成材</option></select></div></div>
+      <div class="form-row3"><div class="fg"><label>W</label><input type="number" id="o-w"></div><div class="fg"><label>H</label><input type="number" id="o-h"></div><div class="fg"><label>L</label><input type="number" id="o-l"></div></div>
+      <div class="form-row"><div class="fg"><label>本数</label><input type="number" id="o-qty"></div><div class="fg"><label>納品場所</label><input type="text" id="o-dest"></div></div>
+      <div class="form-row"><div class="fg"><label>納期</label><input type="date" id="o-due"></div><div class="fg"><label>金額（税別）</label><input type="number" id="o-amount"></div></div>
+      <div class="fg"><label>状態</label><select id="o-status"><option>発注済</option><option>納品待ち</option><option>完了</option></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('m-order')">キャンセル</button><button class="btn btn-primary" onclick="saveOrder()">追加する</button></div>
+  <div class="card" style="max-width:640px">
+    <div class="card-title" style="font-size:18px;margin-bottom:4px">☁ クラウド同期設定</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:20px;line-height:1.6">
+      Google Apps Script のURLを設定すると、どのパソコン・スマホ・ブラウザからでも<br>
+      <strong>同じデータにアクセス</strong>できるようになります。
+    </p>
+
+    <!-- 現在の状態 -->
+    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">現在の同期状態</div>
+      <div id="settings-sync-status" style="font-size:15px;font-weight:700;color:var(--text)">確認中...</div>
+    </div>
+
+    <!-- URL入力 -->
+    <div class="fg">
+      <label>Google Apps Script の URL</label>
+      <input type="url" id="settings-gas-url" placeholder="https://script.google.com/macros/s/..." style="font-size:14px;font-family:var(--mono)">
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">設定手順書を見ながら取得したURLをここに貼り付けてください</p>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:24px">
+      <button class="btn btn-primary" style="flex:2" onclick="applySettingsUrl()">☁ このURLで接続する</button>
+      <button class="btn btn-outline" style="flex:1" onclick="testSync()">接続テスト</button>
+    </div>
+
+    <!-- 区切り線 -->
+    <div style="border-top:1.5px solid var(--border);margin:24px 0"></div>
+
+    <!-- 手動操作 -->
+    <div class="card-title" style="font-size:15px;margin-bottom:14px">手動操作</div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <button class="btn btn-outline" onclick="manualSync()">⟳ 今すぐ同期する</button>
+      <button class="btn btn-outline" onclick="manualSaveNow()">💾 今すぐ保存する</button>
+    </div>
+    <button class="btn btn-danger" style="background:rgba(192,57,43,.08);color:var(--danger);border:1.5px solid rgba(192,57,43,.25)" onclick="resetAllData()">🗑 全データを初期値にリセットする</button>
+  </div>
+</div>
+</div>
+</div>
+
+<script>
+const today=new Date(),todayStr=today.toISOString().slice(0,10);
+let inventory=[
+  {id:1,wh:'重点管理',sp:'桧',gr:'PD',w:90,h:90,l:3000,stock:73,inQty:24,outQty:0,price:0,status:'完成品',note:'邸分'},
+  {id:2,wh:'重点管理',sp:'桧',gr:'PD',w:90,h:90,l:4000,stock:79,inQty:30,outQty:0,price:0,status:'完成品',note:'邸分'},
+  {id:3,wh:'重点管理',sp:'杉',gr:'AD',w:90,h:90,l:3000,stock:190,inQty:7,outQty:0,price:0,status:'完成品',note:'今後作らない'},
+  {id:4,wh:'重点管理',sp:'杉',gr:'AD',w:105,h:105,l:3000,stock:4807,inQty:105,outQty:0,price:0,status:'完成品',note:'4月持永納品予定'},
+  {id:5,wh:'犬迫',sp:'杉',gr:'AD',w:105,h:105,l:0,stock:1008,inQty:0,outQty:0,price:50000,status:'未完成品',note:'6/27外山より336本入荷'},
+  {id:6,wh:'犬迫',sp:'杉',gr:'AD',w:90,h:90,l:4000,stock:34,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:7,wh:'犬迫',sp:'杉',gr:'AD',w:105,h:105,l:0,stock:693,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:8,wh:'松元',sp:'杉',gr:'AD',w:90,h:90,l:3000,stock:92,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:9,wh:'松元',sp:'杉',gr:'AD',w:105,h:105,l:3000,stock:2416,inQty:212,outQty:0,price:0,status:'未完成品',note:''},
+  {id:10,wh:'松元',sp:'桧',gr:'PD',w:90,h:90,l:3000,stock:73,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:11,wh:'松元',sp:'桧',gr:'PD',w:105,h:105,l:3000,stock:124,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:12,wh:'松元',sp:'桧',gr:'PD',w:105,h:105,l:4000,stock:411,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:13,wh:'小野',sp:'杉',gr:'AD',w:18,h:45,l:0,stock:46,inQty:0,outQty:0,price:45000,status:'完成品',note:''},
+  {id:14,wh:'小野',sp:'杉',gr:'AD',w:45,h:60,l:0,stock:104,inQty:15,outQty:0,price:73000,status:'完成品',note:'井手様邸余り材返品'},
+  {id:15,wh:'小野',sp:'杉',gr:'AD',w:45,h:105,l:0,stock:120,inQty:0,outQty:0,price:78000,status:'完成品',note:''},
+  {id:16,wh:'小野',sp:'杉',gr:'AD',w:105,h:105,l:3000,stock:1383,inQty:0,outQty:212,price:67000,status:'完成品',note:'持永5/27 420本'},
+  {id:17,wh:'小野',sp:'桧',gr:'PD',w:105,h:105,l:3000,stock:74,inQty:0,outQty:0,price:75000,status:'完成品',note:''},
+  {id:18,wh:'小野',sp:'桧',gr:'PD',w:105,h:105,l:4000,stock:109,inQty:0,outQty:0,price:75000,status:'完成品',note:''},
+  {id:19,wh:'小野',sp:'杉',gr:'LVL',w:45,h:90,l:4000,stock:83,inQty:0,outQty:0,price:0,status:'完成品',note:''},
+  {id:20,wh:'小野',sp:'杉',gr:'AD',w:105,h:105,l:4000,stock:1061,inQty:50,outQty:0,price:67000,status:'完成品',note:''},
+  {id:21,wh:'小野',sp:'RW',gr:'集成材',w:105,h:105,l:3000,stock:3302,inQty:0,outQty:381,price:67000,status:'完成品',note:''},
+  {id:22,wh:'小野',sp:'RW',gr:'集成材',w:105,h:150,l:4000,stock:27,inQty:1,outQty:32,price:96000,status:'完成品',note:''},
+  {id:23,wh:'WB所有',sp:'杉',gr:'PD',w:105,h:105,l:3000,stock:252,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:24,wh:'WB所有',sp:'桧',gr:'AD',w:90,h:90,l:3000,stock:7,inQty:0,outQty:0,price:76000,status:'完成品',note:''},
+  {id:25,wh:'WB所有',sp:'桧',gr:'AD',w:90,h:90,l:4000,stock:40,inQty:0,outQty:0,price:76000,status:'完成品',note:''},
+  {id:26,wh:'WB所有',sp:'桧',gr:'AD',w:105,h:105,l:3000,stock:158,inQty:77,outQty:45,price:75000,status:'完成品',note:''},
+  {id:27,wh:'WB所有',sp:'桧',gr:'AD',w:105,h:105,l:4000,stock:431,inQty:228,outQty:66,price:75000,status:'完成品',note:''},
+  {id:28,wh:'福田',sp:'杉',gr:'AD',w:90,h:90,l:4000,stock:202,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:29,wh:'福田',sp:'杉',gr:'AD',w:90,h:90,l:3000,stock:294,inQty:0,outQty:0,price:0,status:'未完成品',note:''},
+  {id:30,wh:'小野',sp:'杉',gr:'AD',w:90,h:90,l:3000,stock:533,inQty:0,outQty:5,price:73000,status:'完成品',note:''},
+  {id:31,wh:'小野',sp:'杉',gr:'AD',w:90,h:90,l:4000,stock:432,inQty:0,outQty:41,price:67000,status:'完成品',note:''},
+  {id:32,wh:'WB所有',sp:'杉',gr:'AD',w:45,h:105,l:3000,stock:82,inQty:50,outQty:243,price:68000,status:'完成品',note:''},
+  {id:33,wh:'WB所有',sp:'杉',gr:'AD',w:45,h:60,l:4000,stock:225,inQty:0,outQty:132,price:73000,status:'完成品',note:''},
+  {id:34,wh:'小野',sp:'杉',gr:'KD',w:15,h:15,l:1000,stock:3200,inQty:0,outQty:0,price:120,status:'社内資材',note:'乾燥用桟木'},
+  {id:35,wh:'松元',sp:'杉',gr:'AD',w:30,h:30,l:2000,stock:860,inQty:0,outQty:0,price:200,status:'社内資材',note:'台木・梱包材'},
+];
+let transactions=[
+  {date:todayStr,type:'in',wh:'重点管理',sp:'桧',gr:'PD',w:90,h:90,l:3000,qty:24,sup:'上野木材',price:0,note:''},
+  {date:todayStr,type:'in',wh:'松元',sp:'杉',gr:'AD',w:105,h:105,l:3000,qty:212,sup:'持永',price:67000,note:''},
+  {date:todayStr,type:'sale',wh:'小野',sp:'杉',gr:'AD',w:105,h:105,l:3000,qty:212,dest:'WITHDOM',house:'現場',price:79300,note:''},
+  {date:'2026-05-24',type:'in',wh:'小野',sp:'杉',gr:'AD',w:45,h:60,l:0,qty:15,sup:'久保産業',price:73000,note:'井手様邸余り材返品'},
+  {date:'2026-05-23',type:'loss',wh:'小野',sp:'杉',gr:'AD',w:105,h:105,l:3000,qty:1,ltype:'割れ',note:''},
+];
+let procLog=[
+  {date:'2026-05-20',type:'加工',detail:'杉-105-105-4000→杉-45-105-4000',qty:'-4/+8',wh:'小野',note:''},
+  {date:'2026-05-18',type:'破損',detail:'RW-105-105-6000',qty:'-1',wh:'小野',note:'傷あり'},
+  {date:'2026-04-30',type:'在庫調整',detail:'杉-105-105-3000',qty:'+271',wh:'小野',note:'月末棚卸調整'},
+];
+let orders=[
+  {date:'2026-01-04',sup:'持永',sp:'杉',gr:'AD完成材',w:105,h:105,l:3000,qty:420,dest:'小野',due:'2026-02-28',amount:743558,status:'完了'},
+  {date:'2026-01-19',sup:'久保産業',sp:'杉',gr:'AD完成材',w:105,h:105,l:4000,qty:91,dest:'小野',due:'2026-02-07',amount:308469,status:'完了'},
+  {date:'2026-02-23',sup:'外山木材',sp:'杉',gr:'GRN',w:90,h:90,l:4000,qty:210,dest:'郡山',due:'2026-03-11',amount:355509,status:'完了'},
+  {date:'2026-02-27',sup:'宮下木材市場',sp:'杉',gr:'AD完成材',w:105,h:105,l:4000,qty:252,dest:'春山',due:'2026-02-28',amount:1409562,status:'納品待ち'},
+  {date:'2026-05-20',sup:'久保産業',sp:'杉',gr:'KD',w:45,h:105,l:3000,qty:300,dest:'小野',due:'2026-06-10',amount:318648,status:'発注済'},
+  {date:'2026-05-22',sup:'持永',sp:'桧',gr:'AD',w:105,h:105,l:4000,qty:280,dest:'春山',due:'2026-06-15',amount:0,status:'発注済'},
+];
+const monthlyData=[
+  {code:'杉-105-105-3000',prev:3355,in:30,sale:381,proc:0,diff:-298,stock:3302,vol:109.21,inAmt:62559,saleAmt:998945,unitPrice:67000,invAmt:7317315},
+  {code:'杉-105-105-4000',prev:1066,in:50,sale:139,proc:-4,diff:-84,stock:1061,vol:46.79,inAmt:138915,saleAmt:480999,unitPrice:67000,invAmt:3134937},
+  {code:'桧-105-105-3000',prev:184,in:77,sale:45,proc:0,diff:58,stock:158,vol:5.23,inAmt:191010,saleAmt:136186,unitPrice:75000,invAmt:391939},
+  {code:'桧-105-105-4000',prev:477,in:228,sale:66,proc:0,diff:208,stock:431,vol:19.01,inAmt:754111,saleAmt:266320,unitPrice:75000,invAmt:1425533},
+  {code:'桧-90-90-3000',prev:125,in:0,sale:8,proc:0,diff:-5,stock:122,vol:2.96,inAmt:0,saleAmt:17787,unitPrice:76000,invAmt:225310},
+  {code:'桧-90-90-4000',prev:254,in:42,sale:71,proc:0,diff:13,stock:212,vol:6.87,inAmt:102060,saleAmt:210486,unitPrice:76000,invAmt:522029},
+  {code:'杉-90-90-3000',prev:335,in:0,sale:5,proc:0,diff:-203,stock:533,vol:12.95,inAmt:0,saleAmt:9701,unitPrice:73000,invAmt:945489},
+  {code:'杉-90-90-4000',prev:230,in:0,sale:41,proc:0,diff:-243,stock:432,vol:13.99,inAmt:0,saleAmt:103266,unitPrice:67000,invAmt:937786},
+  {code:'杉-45-105-4000',prev:335,in:50,sale:243,proc:-272,diff:60,stock:82,vol:1.55,inAmt:62843,saleAmt:372470,unitPrice:68000,invAmt:105386},
+  {code:'RW-105-105-3000',prev:2,in:0,sale:2,proc:0,diff:-2,stock:2,vol:0.07,inAmt:0,saleAmt:7666,unitPrice:95000,invAmt:6284},
+  {code:'RW-105-150-4000',prev:34,in:1,sale:32,proc:0,diff:-24,stock:27,vol:1.70,inAmt:5733,saleAmt:223776,unitPrice:96000,invAmt:163296},
+  {code:'杉-30-150-4000',prev:92,in:0,sale:9,proc:0,diff:2,stock:81,vol:1.46,inAmt:0,saleAmt:13446,unitPrice:73000,invAmt:106434},
+  {code:'RW-150-150-6000',prev:8,in:0,sale:0,proc:0,diff:0,stock:8,vol:1.08,inAmt:0,saleAmt:0,unitPrice:95000,invAmt:102600},
+];
+const trendData=[
+  {date:'05/15',in:24,out:18,stock:7820},{date:'05/16',in:0,out:32,stock:7788},{date:'05/17',in:0,out:0,stock:7788},
+  {date:'05/19',in:105,out:15,stock:7878},{date:'05/20',in:336,out:28,stock:8186},{date:'05/21',in:0,out:44,stock:8142},
+  {date:'05/22',in:212,out:0,stock:8354},{date:'05/23',in:15,out:212,stock:8157},{date:'05/24',in:0,out:36,stock:8121},
+  {date:'05/25',in:251,out:212,stock:8160},
+];
+let charts={};let pdfHist=[];
+
+// ===== バーコードスキャン受け口（将来連携用 stub） =====
+/**
+ * onBarcodeScan: バーコードリーダーがEnterキーで値を確定した際に呼ばれる受け口
+ * @param {string} barcode - スキャンされたバーコード文字列
+ * @param {string} context - 'inventory' | 'stocktake' など呼び出し元識別子
+ */
+function onBarcodeScan(barcode, context){
+  // バーコード→品目マスタ検索ロジック
+  soundOK();
+  const matched = inventory.find(r =>
+    String(r.w)+'-'+String(r.h)+'-'+String(r.l) === barcode ||
+    r.sp+r.gr+'-'+r.w+'-'+r.h+'-'+r.l === barcode ||
+    String(r.id) === barcode
+  );
+  if(matched){
+    // 対応するフォームに自動入力
+    if(context==='receive'){
+      const setV=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val;};
+      setV('r-sp',matched.sp); setV('r-gr',matched.gr);
+      setV('r-w',matched.w); setV('r-h',matched.h); setV('r-l',matched.l||'');
+      setV('r-wh',matched.wh); setV('r-status',matched.status||'完成品');
+      if(matched.price) setV('r-price',matched.price);
+      showToast(`✅ バーコード一致: ${matched.sp}${matched.gr} ${matched.w}×${matched.h}×${matched.l||'—'}`);
+    } else if(context==='ship'){
+      const setV=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val;};
+      setV('sl-sp',matched.sp); setV('sl-w',matched.w); setV('sl-h',matched.h); setV('sl-l',matched.l||'');
+      setV('sl-wh',matched.wh);
+      alert(`✅ バーコード一致: ${matched.sp} ${matched.w}×${matched.h}×${matched.l||'—'}`);
+    }
+  } else {
+    alert(`バーコード[${barcode}]に一致する品目がありません`,'warn');
+  }
+}
+
+/**
+ * 在庫検索窓でEnterキー押下時にバーコードスキャンとして扱うイベントハンドラ
+ * バーコードリーダーは通常Enterで確定を送出するため
+ */
+function setupBarcodeListeners(){
+  const invQ=document.getElementById('inv-q');
+  if(invQ){
+    invQ.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        const val=invQ.value.trim();
+        if(val) onBarcodeScan(val,'inventory');
+      }
+    });
+  }
+  const stQ=document.getElementById('st-q');
+  if(stQ){
+    stQ.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        const val=stQ.value.trim();
+        if(val) onBarcodeScan(val,'stocktake');
+      }
+    });
+  }
+}
+
+// ===== 音響フィードバック（バーコードスキャン結果通知 stub） =====
+/**
+ * soundOK: スキャン成功 / 登録成功時の通知音フック
+ * 実装時は Web Audio API や <audio> で音を鳴らす
+ */
+function soundOK(){
+  try{
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.frequency.value=880;g.gain.setValueAtTime(.15,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.18);
+    o.start();o.stop(ac.currentTime+.18);
+  }catch(e){}
+}
+
+/**
+ * soundError: スキャン失敗 / エラー時の通知音フック
+ */
+function soundError(){
+  try{
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.type='sawtooth';o.frequency.value=220;
+    g.gain.setValueAtTime(.15,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.3);
+    o.start();o.stop(ac.currentTime+.3);
+  }catch(e){}
+}
+
+async function init(){
+  document.getElementById('today-date').textContent=today.toLocaleDateString('ja-JP');
+  ['r-date','r-bdate','mr-date','sl-date','ot-date','p-date','l-date','adj-date','o-date','st-new-date','cs-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=todayStr;});
+  if(document.getElementById('c-prdate'))document.getElementById('c-prdate').value=todayStr;
+  setupBarcodeListeners();updateKPIs();renderInventory();renderOrders();renderCost();renderMonthly();renderProcHist();updateCostSel();renderActivity();
+  setTimeout(drawCharts,100);
+  // クラウド（またはLocalStorage）からデータを復元
+  showSyncStatus(GAS_URL ? 'loading' : 'not_configured', GAS_URL ? '読み込み中...' : '⚙ クラウド未設定');
+  await loadFromCloud();
+}
+
+function updateKPIs(){
+  const MO='2026-05';
+  // 社内資材を除いた商品在庫のみで金額計算
+  const productInv=inventory.filter(r=>r.status!=='社内資材');
+  const total=inventory.reduce((s,r)=>s+r.stock,0);
+  const finished=inventory.filter(r=>r.status==='完成品').reduce((s,r)=>s+r.stock,0);
+  const unfinished=inventory.filter(r=>r.status==='未完成品').reduce((s,r)=>s+r.stock,0);
+  const material=inventory.filter(r=>r.status==='社内資材').reduce((s,r)=>s+r.stock,0);
+  const todayIn=inventory.reduce((s,r)=>s+r.inQty,0);
+  const todayOut=inventory.reduce((s,r)=>s+r.outQty,0);
+  // 商品棚卸資産（社内資材除外）
+  const value=productInv.reduce((s,r)=>s+(r.stock*(r.price||0)),0);
+  // 今月仕入（商品のみ）
+  const monthInCost=transactions.filter(t=>t.type==='in'&&t.status!=='社内資材'&&t.date.startsWith(MO)&&t.price>0).reduce((s,t)=>s+t.qty*t.price,0);
+  // 今月売上
+  const monthSales=transactions.filter(t=>t.type==='sale'&&t.date.startsWith(MO)&&t.price>0).reduce((s,t)=>s+t.qty*t.price,0);
+  // 今月粗利 = 売上 − 売上商品の仕入原価
+  const soldCost=transactions.filter(t=>t.type==='sale'&&t.date.startsWith(MO)).reduce((s,t)=>{
+    const inv=inventory.find(r=>r.sp===t.sp&&r.w===t.w&&r.h===t.h&&r.l===t.l);
+    return s+(t.qty*(inv?.price||0));
+  },0);
+  const monthProfit=monthSales-soldCost;
+  const monthMargin=monthSales>0?Math.round(monthProfit/monthSales*100):null;
+  // 今月資材消費額 = 社内資材入庫 + 他勘定振替
+  const materialCost=transactions.filter(t=>t.date.startsWith(MO)&&(
+    (t.type==='in'&&t.status==='社内資材'&&t.price>0)||
+    t.type==='asset_to_expense'
+  )).reduce((s,t)=>s+(t.qty*(t.price||t.unitPrice||0)),0);
+  const monthLoss=transactions.filter(t=>t.type==='loss'&&t.date.startsWith(MO)).reduce((s,t)=>s+t.qty,0);
+  // ダッシュボードKPI
+  document.getElementById('k-total').textContent=total.toLocaleString();
+  document.getElementById('k-tsub').textContent=`本 / ${inventory.length}品目`;
+  document.getElementById('k-finished').textContent=finished.toLocaleString();
+  document.getElementById('k-unfinished').textContent=unfinished.toLocaleString();
+  const kmEl=document.getElementById('k-material');if(kmEl)kmEl.textContent=material.toLocaleString();
+  document.getElementById('k-in').textContent=todayIn.toLocaleString();
+  document.getElementById('k-out').textContent=todayOut.toLocaleString();
+  document.getElementById('k-value').textContent='¥'+value.toLocaleString();
+  document.getElementById('k-incost').textContent='¥'+monthInCost.toLocaleString();
+  document.getElementById('k-sales').textContent='¥'+monthSales.toLocaleString();
+  document.getElementById('k-loss').textContent=monthLoss.toLocaleString();
+  document.getElementById('k-items').textContent=inventory.length;
+  // 原価KPI（社内資材分離済み）
+  document.getElementById('c-total').textContent='¥'+value.toLocaleString();
+  document.getElementById('c-inm').textContent='¥'+monthInCost.toLocaleString();
+  document.getElementById('c-salem').textContent='¥'+monthSales.toLocaleString();
+  document.getElementById('c-profit').textContent='¥'+monthProfit.toLocaleString();
+  const mEl=document.getElementById('c-material');if(mEl)mEl.textContent='¥'+materialCost.toLocaleString();
+  const mgEl=document.getElementById('c-margin');if(mgEl)mgEl.textContent=monthMargin!==null?monthMargin+'%':'—';
+  const low=inventory.filter(r=>r.stock<10).length;
+  const sb=document.getElementById('stock-status');
+  if(low>0){sb.textContent=low+'品目が在庫少';sb.className='badge badge-amber';}
+  else{sb.textContent='在庫正常';sb.className='badge badge-green';}
+}
+
+function drawCharts(){
+  ['trend','sp','wh'].forEach(k=>{if(charts[k]){charts[k].destroy();delete charts[k];}});
+  const tc=document.getElementById('trendChart');
+  if(tc)charts.trend=new Chart(tc,{type:'line',data:{labels:trendData.map(d=>d.date),datasets:[
+    {label:'在庫',data:trendData.map(d=>d.stock),borderColor:'#577358',backgroundColor:'rgba(87,115,88,.08)',tension:.3,fill:true,pointRadius:3},
+    {label:'入庫',data:trendData.map(d=>d.in),borderColor:'#7d9278',backgroundColor:'transparent',tension:.3,borderDash:[4,3],pointRadius:2},
+    {label:'出庫',data:trendData.map(d=>d.out),borderColor:'#c0392b',backgroundColor:'transparent',tension:.3,borderDash:[4,3],pointRadius:2},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{color:'#615341',boxWidth:12,font:{size:10}}}},scales:{y:{beginAtZero:false,ticks:{color:'#577358',font:{size:10}},grid:{color:'rgba(125,146,120,.2)'}},x:{ticks:{color:'#577358',font:{size:10}},grid:{color:'rgba(125,146,120,.15)'}}}}});
+  // 樹種別在庫金額（金額ベース・社内資材除外）
+  const spAmtMap={};inventory.filter(r=>r.status!=='社内資材'&&r.price>0).forEach(r=>{spAmtMap[r.sp]=(spAmtMap[r.sp]||0)+r.stock*r.price;});
+  const spL=Object.keys(spAmtMap),spV=Object.values(spAmtMap),spC=['#2d3d33','#577358','#7d9278','#9b7248','#cec9b0'];
+  const sc=document.getElementById('speciesChart');
+  if(sc)charts.sp=new Chart(sc,{type:'doughnut',data:{labels:spL,datasets:[{data:spV,backgroundColor:spC,borderWidth:1,borderColor:'#fbfaf7'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ¥${ctx.raw.toLocaleString()}`}}}}});
+  const leg=document.getElementById('sp-legend');
+  if(leg)leg.innerHTML=spL.map((l,i)=>`<span style="display:flex;align-items:center;gap:4px;color:var(--muted)"><span style="width:9px;height:9px;border-radius:2px;background:${spC[i]}"></span>${l} ¥${Math.round(spV[i]/10000).toLocaleString()}万</span>`).join('');
+  const whMap={};inventory.forEach(r=>{whMap[r.wh]=(whMap[r.wh]||0)+r.stock;});
+  const wc=document.getElementById('whChart');
+  if(wc)charts.wh=new Chart(wc,{type:'bar',data:{labels:Object.keys(whMap),datasets:[{label:'在庫',data:Object.values(whMap),backgroundColor:'rgba(87,115,88,.7)',borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{color:'#577358',font:{size:10}},grid:{color:'rgba(125,146,120,.2)'}},x:{ticks:{color:'#615341',font:{size:10}},grid:{display:false}}}}});
+}
+
+function renderActivity(){
+  const list=document.getElementById('act-list');
+  const items=transactions.filter(t=>t.date===todayStr);
+  if(!items.length){list.innerHTML='<div style="color:var(--muted);font-size:12px;padding:10px 0">本日の動きはまだありません</div>';return;}
+  list.innerHTML=items.map(t=>{
+    const cls=t.type==='in'?'':t.type==='sale'?'out':'loss';
+    const icon=t.type==='in'?'↓入庫':t.type==='sale'?'↑売上':'×ロス';
+    return `<div class="act-item"><div class="act-dot ${cls}"></div><div><div style="font-size:12px">${icon}: ${t.sp||''}${t.gr||''} ${t.w||''}×${t.h||''}×${t.l||''} <strong style="color:var(--text);font-weight:800">${t.qty}本</strong></div><div style="font-size:10px;color:var(--muted);margin-top:2px">${t.wh} ${t.sup||t.dest||''}</div></div></div>`;
+  }).join('');
+}
+
+let invPage=1,invPer=20,filteredInv=[...inventory];
+function filterInv(){
+  const q=(document.getElementById('inv-q').value||'').toLowerCase();
+  const wh=document.getElementById('inv-wh').value;
+  const sp=document.getElementById('inv-sp').value;
+  const st=document.getElementById('inv-status').value;
+  filteredInv=inventory.filter(r=>(r.sp+r.gr+r.wh+r.w+r.h+r.l+r.note).toLowerCase().includes(q)&&(!wh||r.wh===wh)&&(!sp||r.sp===sp)&&(!st||r.status===st));
+  invPage=1;renderInventory();
+}
+function renderInventory(){
+  const start=(invPage-1)*invPer;
+  const rows=filteredInv.slice(start,start+invPer);
+  const tbody=document.getElementById('inv-tbody');
+  tbody.innerHTML=rows.map(r=>{
+    const spCls=r.sp==='杉'?'badge-blue':r.sp==='桧'?'badge-green':r.sp==='RW'?'badge-amber':'badge-purple';
+    const stCls=r.status==='完成品'?'badge-green':r.status==='社内資材'?'badge-material':'badge-amber';
+    const sc=r.stock<10?'style="color:var(--danger);font-weight:800;font-size:16px"':r.stock>1000?'style="color:var(--accent);font-weight:800;font-size:16px"':'style="font-weight:700;font-size:15px"';
+    const vol=r.w&&r.h&&r.l?((r.w/1000)*(r.h/1000)*(r.l/1000)).toFixed(4):'—';
+    return `<tr><td><span class="badge ${stCls}">${r.status||'—'}</span></td><td style="font-size:13px;color:var(--muted)">${r.wh}</td><td><span class="badge ${spCls}">${r.sp}</span></td><td style="font-size:13px;color:var(--muted)">${r.gr}</td><td style="font-family:var(--mono);font-size:14px;font-weight:700">${r.w}</td><td style="font-family:var(--mono);font-size:14px;font-weight:700">${r.h}</td><td style="font-family:var(--mono);font-size:14px;font-weight:700">${r.l||'—'}</td><td ${sc} style="font-family:var(--mono);cursor:pointer" onclick="openEditInv(${r.id})" title="クリックで編集">${r.stock.toLocaleString()}</td><td style="color:var(--accent2);font-family:var(--mono)">${r.inQty?'+'+r.inQty:''}</td><td style="color:var(--danger);font-family:var(--mono)">${r.outQty?'-'+r.outQty:''}</td><td style="font-family:var(--mono);font-size:11px">${r.price?'¥'+r.price.toLocaleString():'—'}</td><td style="font-family:var(--mono);font-size:11px;color:var(--accent)">${r.price?'¥'+(r.stock*r.price).toLocaleString():'—'}</td><td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${vol}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)">${r.note||''}</td><td style="text-align:center">${(()=>{const docs=attachStore[r.id]||[];return docs.length?`<button class="doc-icon-btn" onclick="openDocViewer(${r.id})" title="${docs.length}件の書類">📎 ${docs.length}件</button>`:'<span class="doc-icon-btn no-doc">—</span>'})()}</td><td style="white-space:nowrap;text-align:center"><button class="btn btn-outline btn-sm" style="padding:5px 10px;font-size:12px;min-height:32px" onclick="openEditInv(${r.id})" title="編集">✏️ 編集</button><button class="btn btn-sm" style="padding:5px 10px;font-size:12px;min-height:32px;background:rgba(192,57,43,.08);color:var(--danger);border:1.5px solid rgba(192,57,43,.25);margin-left:4px" onclick="deleteInv(${r.id})" title="削除">🗑</button></td></tr>`;
+  }).join('');
+  const total=Math.ceil(filteredInv.length/invPer);
+  const pg=document.getElementById('inv-pager');
+  if(total<=1){pg.innerHTML='';return;}
+  let html=`<span>${filteredInv.length}件</span>`;
+  for(let i=1;i<=Math.min(total,8);i++)html+=`<button class="pager-btn ${i===invPage?'active':''}" onclick="invPage=${i};renderInventory()">${i}</button>`;
+  pg.innerHTML=html;
+}
+function exportInvCSV(){
+  const h=['区分','倉庫','樹種','等級','W','H','L','在庫','入庫','出庫','単価','備考'];
+  const r=inventory.map(r=>[r.status||'',r.wh,r.sp,r.gr,r.w,r.h,r.l,r.stock,r.inQty,r.outQty,r.price,r.note].join(','));
+  dl('\uFEFF'+h.join(',')+'\n'+r.join('\n'),'在庫一覧_'+todayStr+'.csv','text/csv');
+}
+function dl(c,n,t){const a=document.createElement('a');a.href='data:'+t+';charset=utf-8,'+encodeURIComponent(c);a.download=n;a.click();}
+
+function calcRec(){const q=+document.getElementById('r-qty').value||0,p=+document.getElementById('r-price').value||0;const b=document.getElementById('r-calc');if(q&&p){b.style.display='block';document.getElementById('r-calc-val').textContent='¥'+(q*p).toLocaleString();}else b.style.display='none';}
+function saveReceive(){
+  const d={date:v('r-date'),wh:v('r-wh'),sup:v('r-sup'),sp:v('r-sp'),gr:v('r-gr'),w:+v('r-w')||0,h:+v('r-h')||0,l:+v('r-l')||0,qty:+v('r-qty')||0,price:+v('r-price')||0,status:v('r-status')||'完成品',note:v('r-note')};
+  if(!d.qty){alert('本数を入力してください');return;}
+  const invId=_addRec(d);
+  // 添付ファイルを在庫品目に紐付け
+  if(invId&&(pendingAttach['r']||[]).length>0) commitAttach('r',invId);
+  soundOK();autoSave();
+  const attachCount=(attachStore[invId]||[]).length;
+  alert(`✅ 入庫登録完了\n${d.sp}${d.gr} ${d.w}×${d.h}×${d.l} ${d.qty}本`+(attachCount?`\n📎 書類 ${attachCount}件を添付しました`:''));
+  clearRecForm();
+}
+function clearRecForm(){['r-sup','r-w','r-h','r-l','r-qty','r-price','r-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('r-calc').style.display='none';delete pendingAttach['r'];const prev=document.getElementById('r-preview');if(prev)prev.innerHTML='';}
+function saveModalRec(){
+  const d={date:v('mr-date'),wh:v('mr-wh'),sup:v('mr-sup'),sp:v('mr-sp'),gr:v('mr-gr'),w:+v('mr-w')||0,h:+v('mr-h')||0,l:+v('mr-l')||0,qty:+v('mr-qty')||0,price:+v('mr-price')||0,status:v('mr-status')||'完成品',note:v('mr-note')};
+  if(!d.qty){alert('本数を入力してください');return;}
+  _addRec(d);soundOK();autoSave();closeModal('m-receive');alert('✅ 入庫登録しました');
+}
+function _addRec(d){
+  let invId;
+  const ex=inventory.find(r=>r.wh===d.wh&&r.sp===d.sp&&r.gr===d.gr&&r.w===d.w&&r.h===d.h&&r.l===d.l&&r.status===d.status);
+  if(ex){ex.stock+=d.qty;ex.inQty+=d.qty;if(d.price)ex.price=d.price;invId=ex.id;}
+  else{const newItem={id:inventory.length+1,wh:d.wh,sp:d.sp,gr:d.gr,w:d.w,h:d.h,l:d.l,stock:d.qty,inQty:d.qty,outQty:0,price:d.price,status:d.status||'完成品',note:d.note||''};inventory.push(newItem);invId=newItem.id;}
+  transactions.push({...d,type:'in'});
+  updateKPIs();renderInventory();renderCost();renderActivity();
+  return invId;
+}
+function v(id){const el=document.getElementById(id);return el?el.value:'';}
+
+function calcSale(){const q=+document.getElementById('sl-qty').value||0,p=+document.getElementById('sl-price').value||0;const b=document.getElementById('sl-calc');if(q&&p){b.style.display='block';document.getElementById('sl-calc-val').textContent='¥'+(q*p).toLocaleString();}else b.style.display='none';}
+function saveSale(){
+  const d={date:v('sl-date'),wh:v('sl-wh'),sp:v('sl-sp'),w:+v('sl-w')||0,h:+v('sl-h')||0,l:+v('sl-l')||0,qty:+v('sl-qty')||0,price:+v('sl-price')||0,dest:v('sl-dest'),house:v('sl-house'),div:v('sl-div')};
+  if(!d.qty){alert('本数を入力してください');return;}
+  const ex=inventory.find(r=>r.wh===d.wh&&r.sp===d.sp&&r.w===d.w&&r.h===d.h&&r.l===d.l);
+  if(ex){if(ex.stock<d.qty){alert(`在庫不足！現在庫: ${ex.stock}本`);return;}ex.stock-=d.qty;ex.outQty+=d.qty;
+    // 出庫書類も同じ在庫品目に紐付け
+    if((pendingAttach['sl']||[]).length>0) commitAttach('sl',ex.id);
+  }
+  transactions.push({...d,type:'sale'});
+  const attachCount=ex?(attachStore[ex.id]||[]).length:0;
+  soundOK();autoSave();alert(`✅ 売上出庫登録完了\n${d.sp} ${d.w}×${d.h}×${d.l} ${d.qty}本`+(attachCount&&(pendingAttach['sl']||[]).length?`\n📎 書類 ${(pendingAttach['sl']||[]).length}件を添付しました`:''));
+  updateKPIs();renderInventory();renderActivity();
+}
+function saveOther(){const qty=+v('ot-qty')||0;if(!qty){alert('本数を入力してください');return;}autoSave();alert('✅ 出庫を登録しました');updateKPIs();renderInventory();}
+function shipTab(t){document.querySelectorAll('.tabs .tab').forEach((el,i)=>el.classList.toggle('active',(t==='sale'&&i===0)||(t==='other'&&i===1)));document.getElementById('ship-sale').style.display=t==='sale'?'':'none';document.getElementById('ship-other').style.display=t==='other'?'':'none';}
+
+function procTab(t){['proc','loss','adj','consume'].forEach(n=>{document.getElementById(`pf-${n}`).style.display=n===t?'':'none';});document.querySelectorAll('#page-process .tabs .tab').forEach((el,i)=>el.classList.toggle('active',(['proc','loss','adj','consume'][i])===t));}
+function saveProc(){
+  const fqty=+v('p-fqty')||0;if(!fqty){alert('本数を入力してください');return;}
+  const fsp=v('p-fsp'),fw=+v('p-fw')||0,fh=+v('p-fh')||0,fl=+v('p-fl')||0;
+  const fcode=`${fsp}-${fw}-${fh}-${fl}`;
+  const tcode=`${v('p-tsp')}-${v('p-tw')}-${v('p-th')}-${v('p-tl')}`;
+  const wh=v('p-wh');
+  const ex=inventory.find(r=>r.wh===wh&&r.sp===fsp&&r.w===fw&&r.h===fh&&r.l===fl);
+  if(ex){if(ex.stock<fqty){alert(`在庫不足 ${ex.stock}本`);return;}ex.stock-=fqty;}
+  procLog.unshift({date:v('p-date'),type:'加工',detail:`${fcode}→${tcode}`,qty:`-${fqty}/+${v('p-tqty')||0}`,wh,note:v('p-note')});
+  autoSave();alert('✅ 加工指示を登録しました');renderProcHist();updateKPIs();renderInventory();
+}
+function saveLoss(){
+  const qty=+v('l-qty')||0;if(!qty){alert('本数を入力してください');return;}
+  const sp=v('l-sp'),w=+v('l-w')||0,h=+v('l-h')||0,l=+v('l-l')||0,wh=v('l-wh');
+  const ex=inventory.find(r=>r.wh===wh&&r.sp===sp&&r.w===w&&r.h===h&&r.l===l);
+  if(ex){if(ex.stock<qty){alert('在庫不足');return;}ex.stock-=qty;}
+  procLog.unshift({date:v('l-date'),type:'破損',detail:`${sp}-${w}-${h}-${l}`,qty:`-${qty}`,wh,note:v('l-note')});
+  transactions.push({date:v('l-date'),type:'loss',wh,sp,w,h,l,qty,ltype:v('l-type'),note:v('l-note')});
+  autoSave();alert('✅ 破損・ロスを登録しました');renderProcHist();updateKPIs();renderInventory();
+}
+function saveAdj(){
+  const qty=+v('adj-qty')||0;if(!qty){alert('調整数量を入力してください');return;}
+  const sp=v('adj-sp'),w=+v('adj-w')||0,h=+v('adj-h')||0,l=+v('adj-l')||0,wh=v('adj-wh');
+  const ex=inventory.find(r=>r.wh===wh&&r.sp===sp&&r.w===w&&r.h===h&&r.l===l);
+  if(ex)ex.stock+=qty;
+  procLog.unshift({date:v('adj-date'),type:'在庫調整',detail:`${sp}-${w}-${h}-${l}`,qty:qty>0?`+${qty}`:`${qty}`,wh,note:v('adj-note')});
+  autoSave();alert('✅ 在庫調整を登録しました');renderProcHist();updateKPIs();renderInventory();
+}
+function renderProcHist(){
+  const tbody=document.getElementById('proc-hist');
+  const badgeCls={'加工':'badge-amber','破損':'badge-red','在庫調整':'badge-blue'};
+  tbody.innerHTML=procLog.map(r=>`<tr><td style="font-family:var(--mono);font-size:11px">${r.date}</td><td><span class="badge ${badgeCls[r.type]||'badge-blue'}">${r.type}</span></td><td style="font-size:11px">${r.detail}</td><td style="font-family:var(--mono);font-size:11px;font-weight:600">${r.qty}</td><td style="font-size:11px;color:var(--muted)">${r.wh}</td><td style="font-size:11px;color:var(--muted)">${r.note||''}</td></tr>`).join('');
+}
+
+let costFiltered=[...inventory];
+function filterCost(){const q=(v('cost-q')||'').toLowerCase();costFiltered=inventory.filter(r=>`${r.sp}-${r.w}-${r.h}-${r.l}`.toLowerCase().includes(q)||r.sp.toLowerCase().includes(q));renderCost();}
+function renderCost(){
+  const tbody=document.getElementById('cost-tbody');
+  tbody.innerHTML=inventory.filter(r=>r.price>0).map(r=>{
+    const vol=r.w&&r.h&&r.l?(r.stock*(r.w/1000)*(r.h/1000)*(r.l/1000)).toFixed(2):'—';
+    return `<tr><td style="font-family:var(--mono);font-size:11px">${r.sp}-${r.w}-${r.h}-${r.l}</td><td style="font-family:var(--mono)">${r.stock.toLocaleString()}</td><td style="font-family:var(--mono);font-size:11px">¥${r.price.toLocaleString()}</td><td style="font-family:var(--mono);font-size:11px;color:var(--accent)">¥${(r.stock*r.price).toLocaleString()}</td><td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${vol}</td></tr>`;
+  }).join('');
+  const ms=document.getElementById('m-summary');
+  const tv=monthlyData.reduce((s,r)=>s+r.invAmt,0),ti=monthlyData.reduce((s,r)=>s+r.inAmt,0),ts=monthlyData.reduce((s,r)=>s+r.saleAmt,0);
+  ms.innerHTML=`<tr><td>月末在庫金額</td><td style="font-family:var(--mono);text-align:right">¥${tv.toLocaleString()}</td></tr><tr><td>月次入庫金額</td><td style="font-family:var(--mono);text-align:right">¥${ti.toLocaleString()}</td></tr><tr><td>月次売上金額</td><td style="font-family:var(--mono);text-align:right;color:var(--accent)">¥${ts.toLocaleString()}</td></tr><tr><td>粗利（概算）</td><td style="font-family:var(--mono);text-align:right;color:var(--accent2)">¥${(ts-ti).toLocaleString()}</td></tr>`;
+}
+function updateCostSel(){const sel=document.getElementById('c-sel');sel.innerHTML='<option value="">選択してください...</option>'+inventory.filter(r=>r.price>0).map((r,i)=>`<option value="${i}">${r.sp}-${r.w}-${r.h}-${r.l} (${r.wh})</option>`).join('');}
+function updatePrice(){const idx=v('c-sel'),p=+v('c-newprice')||0;if(idx===''||!p){alert('品目と単価を入力してください');return;}const items=inventory.filter(r=>r.price>0);if(items[+idx])items[+idx].price=p;renderCost();renderInventory();alert('✅ 単価を更新しました');}
+
+function renderMonthly(){
+  const q=(v('m-q')||'').toLowerCase();
+  const data=monthlyData.filter(r=>!q||r.code.toLowerCase().includes(q));
+  document.getElementById('m-tbody').innerHTML=data.map(r=>{
+    const dc=r.diff<0?'color:var(--danger)':r.diff>0?'color:var(--accent2)':'';
+    return `<tr><td style="font-family:var(--mono);font-size:11px">${r.code}</td><td style="font-family:var(--mono)">${r.prev}</td><td style="font-family:var(--mono);color:var(--accent2)">${r.in||''}</td><td style="font-family:var(--mono);color:var(--danger)">${r.sale||''}</td><td style="font-family:var(--mono);color:var(--warn)">${r.proc||''}</td><td style="font-family:var(--mono);${dc}">${r.diff}</td><td style="font-family:var(--mono);font-weight:600">${r.stock}</td><td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${r.vol.toFixed(2)}</td><td style="font-family:var(--mono);font-size:11px">${r.inAmt?'¥'+r.inAmt.toLocaleString():''}</td><td style="font-family:var(--mono);font-size:11px;color:var(--accent)">${r.saleAmt?'¥'+r.saleAmt.toLocaleString():''}</td><td style="font-family:var(--mono);font-size:11px;color:var(--accent2)">¥${r.invAmt.toLocaleString()}</td></tr>`;
+  }).join('');
+  const tv=data.reduce((s,r)=>s+r.invAmt,0),ti=data.reduce((s,r)=>s+r.inAmt,0),ts=data.reduce((s,r)=>s+r.saleAmt,0),tl=data.filter(r=>r.proc!==0).reduce((s,r)=>s+Math.abs(r.proc),0);
+  document.getElementById('m-invval').textContent='¥'+tv.toLocaleString();
+  document.getElementById('m-inval').textContent='¥'+ti.toLocaleString();
+  document.getElementById('m-saleval').textContent='¥'+ts.toLocaleString();
+  document.getElementById('m-lossval').textContent=tl.toLocaleString()+'本';
+}
+function exportMonCSV(){const h=['商品番号','前月末','入庫','売上','加工','月末差異','月末在庫','材積','入庫金額','売上金額','在庫金額'];const r=monthlyData.map(r=>[r.code,r.prev,r.in,r.sale,r.proc,r.diff,r.stock,r.vol,r.inAmt,r.saleAmt,r.invAmt].join(','));dl('\uFEFF'+h.join(',')+'\n'+r.join('\n'),'月次在庫_4月.csv','text/csv');}
+
+let filteredOrd=[...orders];
+function filterOrd(){const q=(v('ord-q')||'').toLowerCase(),sf=v('ord-sf');filteredOrd=orders.filter(o=>(o.sup+o.sp).toLowerCase().includes(q)&&(!sf||o.status===sf));renderOrders();}
+function renderOrders(){
+  const scls={'完了':'badge-green','発注済':'badge-amber','納品待ち':'badge-blue'};
+  document.getElementById('ord-tbody').innerHTML=filteredOrd.map((o,i)=>`<tr><td style="font-family:var(--mono);font-size:11px">${o.date.slice(5)}</td><td style="font-weight:500">${o.sup}</td><td><span class="badge badge-blue">${o.sp}</span></td><td style="font-size:11px;color:var(--muted)">${o.gr}</td><td style="font-family:var(--mono);font-size:11px">${o.w}×${o.h}×${o.l}</td><td style="font-family:var(--mono)">${o.qty.toLocaleString()}</td><td style="font-size:11px">${o.dest||'—'}</td><td style="font-family:var(--mono);font-size:11px">${o.due?.slice(5)||'—'}</td><td style="font-family:var(--mono);font-size:11px">${o.amount?'¥'+o.amount.toLocaleString():'—'}</td><td><span class="badge ${scls[o.status]||'badge-blue'}">${o.status}</span></td><td style="white-space:nowrap;text-align:center"><button class="btn btn-outline btn-sm" style="padding:5px 10px;font-size:12px;min-height:32px" onclick="openEditOrder(${orders.indexOf(o)})" title="編集">✏️ 編集</button></td></tr>`).join('');
+}
+function saveOrder(){const o={date:v('o-date'),sup:v('o-sup'),sp:v('o-sp'),gr:v('o-gr'),w:+v('o-w')||0,h:+v('o-h')||0,l:+v('o-l')||0,qty:+v('o-qty')||0,dest:v('o-dest'),due:v('o-due'),amount:+v('o-amount')||0,status:v('o-status')};if(!o.sup){alert('仕入先を入力してください');return;}orders.unshift(o);filterOrd();autoSave();closeModal('m-order');alert('✅ 発注を追加しました');}
+
+function pdfDragOver(e){e.preventDefault();document.getElementById('pdf-drop').classList.add('dragover');}
+function pdfDrop(e){e.preventDefault();document.getElementById('pdf-drop').classList.remove('dragover');if(e.dataTransfer.files[0])processPDF(e.dataTransfer.files[0]);}
+function handlePDF(e){if(e.target.files[0])processPDF(e.target.files[0]);}
+async function processPDF(file){
+  document.getElementById('pdf-loading').style.display='block';document.getElementById('pdf-result').innerHTML='';
+  let text='';
+  try{
+    if(typeof pdfjsLib!=='undefined'){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+      for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);const ct=await pg.getTextContent();text+=ct.items.map(i=>i.str).join(' ')+'\n';}
+    }
+  }catch(e){}
+  await callAI(text||file.name,file.name);
+}
+async function callAI(text,fname){
+  const prompt=`以下は木材納品書のテキストです。品目・本数・単価・金額・仕入先・樹種・寸法(W×H×L mm)を抽出し、必ずJSON配列のみ返してください。抽出できない項目はnullにしてください。\n\n納品書テキスト:\n${text.slice(0,2000)}\n\nレスポンス形式（JSON配列のみ）:\n[{"supplier":"仕入先名","species":"杉 or 桧 or RW","grade":"AD or KD etc","w":数値or null,"h":数値or null,"l":数値or null,"qty":数値or null,"unit_price":数値or null,"total":数値or null,"note":"邸名など"}]`;
+  let items=[];
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})});
+    const data=await res.json();
+    const raw=data.content?.[0]?.text||'[]';
+    items=JSON.parse(raw.replace(/```json|```/g,'').trim());
+  }catch(e){items=[{supplier:'（抽出失敗）',species:'杉',grade:'AD',w:null,h:null,l:null,qty:null,unit_price:null,total:null,note:'手動確認してください'}];}
+  document.getElementById('pdf-loading').style.display='none';
+  showPDFResult(items,fname);
+}
+function showPDFResult(items,fname){
+  const rows=items.map((it,i)=>`<tr><td style="font-size:11px">${it.supplier||'—'}</td><td><span class="badge badge-blue">${it.species||'—'}</span></td><td style="font-size:11px">${it.grade||'—'}</td><td style="font-family:var(--mono);font-size:11px">${it.w||'—'}×${it.h||'—'}×${it.l||'—'}</td><td><input type="number" value="${it.qty||''}" id="pf-qty-${i}" style="width:60px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-family:var(--mono)"></td><td><input type="number" value="${it.unit_price||''}" id="pf-price-${i}" style="width:80px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-family:var(--mono)"></td><td style="font-family:var(--mono);font-size:11px;color:var(--accent)">${it.total?'¥'+it.total.toLocaleString():'—'}</td><td style="font-size:10px;color:var(--muted)">${it.note||''}</td></tr>`).join('');
+  document.getElementById('pdf-result').innerHTML=`<div class="alert alert-success" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>AIが <strong>${items.length}品目</strong> を抽出しました（${fname}）。数量・単価を確認して登録してください。</div><div style="overflow-x:auto;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r2);padding:8px;margin-bottom:12px"><table><thead><tr><th>仕入先</th><th>樹種</th><th>等級</th><th>寸法</th><th>本数</th><th>単価</th><th>金額</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table></div><div style="display:flex;gap:10px"><button class="btn btn-success" onclick="confirmPDF(${JSON.stringify(items).replace(/"/g,'&quot;')})">✅ この内容で入庫登録する</button><button class="btn btn-outline" onclick="document.getElementById('pdf-result').innerHTML=''">やり直す</button></div>`;
+  pdfHist.push({fname,date:new Date().toLocaleDateString('ja-JP'),count:items.length});renderPDFHist();
+}
+function confirmPDF(items){
+  items.forEach((it,i)=>{const qty=+document.getElementById(`pf-qty-${i}`)?.value||it.qty||0,price=+document.getElementById(`pf-price-${i}`)?.value||it.unit_price||0;if(qty)_addRec({date:todayStr,wh:'小野',sup:it.supplier||'',sp:it.species||'杉',gr:it.grade||'AD',w:it.w||0,h:it.h||0,l:it.l||0,qty,price,note:it.note||''});});
+  document.getElementById('pdf-result').innerHTML='';alert('✅ 入庫登録が完了しました！\n在庫一覧から確認できます。');
+}
+function renderPDFHist(){const el=document.getElementById('pdf-hist');if(!pdfHist.length){el.innerHTML='<p style="font-size:12px;color:var(--muted)">まだ読取履歴がありません</p>';return;}el.innerHTML=`<table><thead><tr><th>ファイル名</th><th>読取日</th><th>品目数</th></tr></thead><tbody>${pdfHist.map(h=>`<tr><td>${h.fname}</td><td style="font-family:var(--mono);font-size:11px">${h.date}</td><td>${h.count}品目</td></tr>`).join('')}</tbody></table>`;}
+
+// ===== クイックタップ補助 =====
+function adjustQty(id,delta){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const cur=parseInt(el.value)||0;
+  el.value=Math.max(0,cur+delta);
+  // cs-qtyの場合は計算ボックスも更新
+  if(id==='cs-qty')calcConsume();
+}
+
+// ===== 資材消費登録 =====
+function calcConsume(){
+  const qty=+document.getElementById('cs-qty')?.value||0;
+  const sp=v('cs-sp'),w=+v('cs-w')||0,h=+v('cs-h')||0,l=+v('cs-l')||0,wh=v('cs-wh');
+  const ex=inventory.find(r=>r.wh===wh&&r.sp===sp&&r.w===w&&r.h===h&&r.l===l);
+  const price=ex?.price||0;
+  const b=document.getElementById('cs-calc');
+  if(qty&&price){b.style.display='block';document.getElementById('cs-calc-val').textContent='¥'+(qty*price).toLocaleString();}
+  else if(b)b.style.display='none';
+}
+function saveConsume(){
+  const qty=+v('cs-qty')||0;
+  if(!qty){alert('消費本数を入力してください');return;}
+  const sp=v('cs-sp'),w=+v('cs-w')||0,h=+v('cs-h')||0,l=+v('cs-l')||0,wh=v('cs-wh');
+  const ex=inventory.find(r=>r.wh===wh&&r.sp===sp&&r.w===w&&r.h===h&&r.l===l);
+  if(ex){if(ex.stock<qty){alert(`在庫不足！現在庫: ${ex.stock}本`);return;}ex.stock-=qty;}
+  const unitPrice=ex?.price||0;
+  transactions.push({date:v('cs-date'),type:'asset_to_expense',wh,sp,w,h,l,qty,unitPrice,price:unitPrice,use:v('cs-use'),note:v('cs-note')});
+  procLog.unshift({date:v('cs-date'),type:'資材消費',detail:`${sp}-${w}-${h}-${l}（${v('cs-use')}）`,qty:`-${qty}`,wh,note:v('cs-note')});
+  soundOK();
+  alert(`✅ 資材消費を登録しました\n${sp} ${w}×${h}×${l} ${qty}本\n消費金額: ¥${(qty*unitPrice).toLocaleString()}`);
+  ['cs-qty','cs-w','cs-h','cs-l','cs-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const cb=document.getElementById('cs-calc');if(cb)cb.style.display='none';
+  renderProcHist();updateKPIs();renderInventory();
+}
+
+// ===== 棚卸機能 =====
+let stSession=null; // 現在の棚卸セッション
+let stHistory=[]; // 棚卸履歴
+
+function startStocktake(){
+  const name=document.getElementById('st-new-name').value.trim()||`棚卸 ${document.getElementById('st-new-date').value}`;
+  const date=document.getElementById('st-new-date').value||todayStr;
+  const wh=document.getElementById('st-new-wh').value;
+  const person=document.getElementById('st-new-person').value.trim();
+  const note=document.getElementById('st-new-note').value.trim();
+  if(stSession&&!confirm('進行中の棚卸があります。新しい棚卸を開始すると現在の入力内容が失われます。続けますか？'))return;
+  const targets=wh==='all'?inventory:inventory.filter(r=>r.wh===wh);
+  stSession={
+    id:Date.now(),name,date,wh,person,note,
+    startedAt:new Date().toLocaleString('ja-JP'),
+    items:targets.map(r=>({
+      id:r.id,wh:r.wh,sp:r.sp,gr:r.gr,w:r.w,h:r.h,l:r.l,
+      status:r.status||'完成品',
+      bookQty:r.stock,
+      actualQty:null,
+      note:''
+    }))
+  };
+  closeModal('m-st-new');
+  updateStSessionUI();
+  renderStocktake();
+  document.getElementById('st-kpi-wrap').style.display='block';
+  document.getElementById('st-progress-wrap').style.display='block';
+  document.getElementById('st-complete-btn').style.display='';
+  document.getElementById('st-empty').style.display='none';
+}
+
+function updateStSessionUI(){
+  if(!stSession){
+    document.getElementById('st-session-name').textContent='棚卸未開始';
+    document.getElementById('st-session-date').textContent='';
+    return;
+  }
+  document.getElementById('st-session-name').textContent=stSession.name;
+  document.getElementById('st-session-date').textContent=`開始: ${stSession.startedAt} / 担当: ${stSession.person||'未入力'}`;
+}
+
+function renderStocktake(){
+  const tbody=document.getElementById('st-tbody');
+  const empty=document.getElementById('st-empty');
+  if(!stSession){empty.style.display='block';tbody.innerHTML='';updateStSummary();return;}
+  empty.style.display='none';
+  const q=(document.getElementById('st-q')?.value||'').toLowerCase();
+  const whf=document.getElementById('st-wh-f')?.value||'';
+  const difff=document.getElementById('st-diff-f')?.value||'';
+  const stf=document.getElementById('st-status-f')?.value||'';
+  let items=stSession.items.filter(r=>{
+    const txt=`${r.wh}${r.sp}${r.gr}${r.w}${r.h}${r.l}`.toLowerCase();
+    if(q&&!txt.includes(q))return false;
+    if(whf&&r.wh!==whf)return false;
+    if(stf&&r.status!==stf)return false;
+    if(difff==='diff'&&(r.actualQty===null||r.actualQty===r.bookQty))return false;
+    if(difff==='undone'&&r.actualQty!==null)return false;
+    return true;
+  });
+  const spCls={'杉':'badge-blue','桧':'badge-green','RW':'badge-amber'};
+  tbody.innerHTML=items.map(item=>{
+    const diff=item.actualQty!==null?item.actualQty-item.bookQty:null;
+    const diffClass=diff===null?'':diff>0?'diff-plus':diff<0?'diff-minus':'';
+    const diffBadge=diff===null?'<span style="color:var(--muted);font-size:11px">—</span>':
+      diff>0?`<span class="diff-badge plus">+${diff}</span>`:
+      diff<0?`<span class="diff-badge minus">${diff}</span>`:
+      `<span class="diff-badge zero">±0</span>`;
+    const diffRate=diff!==null&&item.bookQty>0?(diff/item.bookQty*100).toFixed(1)+'%':'—';
+    const inputVal=item.actualQty!==null?item.actualQty:'';
+    const inputCls=item.actualQty!==null&&item.actualQty!==item.bookQty?'stocktake-input changed':'stocktake-input';
+    return `<tr class="stocktake-row ${diffClass}" data-id="${item.id}">
+      <td><span class="badge ${item.status==='完成品'?'badge-green':item.status==='社内資材'?'badge-material':'badge-amber'}" style="font-size:12px;font-weight:700">${item.status||'—'}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${item.wh}</td>
+      <td><span class="badge ${spCls[item.sp]||'badge-purple'}">${item.sp}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${item.gr}</td>
+      <td style="font-family:var(--mono);font-size:14px;font-weight:700">${item.w}</td>
+      <td style="font-family:var(--mono);font-size:14px;font-weight:700">${item.h}</td>
+      <td style="font-family:var(--mono);font-size:14px;font-weight:700">${item.l||'—'}</td>
+      <td style="font-family:var(--mono);font-weight:700;font-size:15px">${item.bookQty.toLocaleString()}</td>
+      <td><input type="number" class="${inputCls}" value="${inputVal}" placeholder="実数入力" min="0"
+        onchange="onStInput(${item.id},this.value)" oninput="onStInput(${item.id},this.value)"></td>
+      <td>${diffBadge}</td>
+      <td style="font-size:11px;color:var(--muted);font-family:var(--mono)">${diffRate}</td>
+      <td><input type="text" value="${item.note||''}" placeholder="メモ" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px;width:100%;outline:none" onchange="onStNote(${item.id},this.value)"></td>
+    </tr>`;
+  }).join('');
+  updateStSummary();
+  updateStProgress();
+}
+
+function onStInput(id,val){
+  if(!stSession)return;
+  const item=stSession.items.find(r=>r.id===id);
+  if(!item)return;
+  item.actualQty=val===''||val===null?null:Math.max(0,parseInt(val)||0);
+  // リアルタイムで差異セルを更新
+  const tr=document.querySelector(`tr[data-id="${id}"]`);
+  if(tr){
+    const diff=item.actualQty!==null?item.actualQty-item.bookQty:null;
+    tr.className=`stocktake-row ${diff===null?'':diff>0?'diff-plus':diff<0?'diff-minus':''}`;
+    const diffTd=tr.children[9];
+    const rateTd=tr.children[10];
+    if(diff===null){diffTd.innerHTML='<span style="color:var(--muted);font-size:11px">—</span>';rateTd.textContent='—';}
+    else if(diff>0){diffTd.innerHTML=`<span class="diff-badge plus">+${diff}</span>`;rateTd.textContent=item.bookQty>0?(diff/item.bookQty*100).toFixed(1)+'%':'—';}
+    else if(diff<0){diffTd.innerHTML=`<span class="diff-badge minus">${diff}</span>`;rateTd.textContent=item.bookQty>0?(diff/item.bookQty*100).toFixed(1)+'%':'—';}
+    else{diffTd.innerHTML='<span class="diff-badge zero">±0</span>';rateTd.textContent='0.0%';}
+    const input=tr.querySelector('input[type=number]');
+    if(input)input.className=item.actualQty!==null&&item.actualQty!==item.bookQty?'stocktake-input changed':'stocktake-input';
+  }
+  updateStSummary();
+  updateStProgress();
+}
+
+function onStNote(id,val){
+  if(!stSession)return;
+  const item=stSession.items.find(r=>r.id===id);
+  if(item)item.note=val;
+}
+
+function updateStSummary(){
+  if(!stSession){document.getElementById('st-k-done').textContent='0';document.getElementById('st-k-diff').textContent='0';document.getElementById('st-k-plus').textContent='+0';document.getElementById('st-k-minus').textContent='0';return;}
+  const done=stSession.items.filter(r=>r.actualQty!==null).length;
+  const diffs=stSession.items.filter(r=>r.actualQty!==null&&r.actualQty!==r.bookQty);
+  const plus=diffs.filter(r=>r.actualQty>r.bookQty).reduce((s,r)=>s+(r.actualQty-r.bookQty),0);
+  const minus=diffs.filter(r=>r.actualQty<r.bookQty).reduce((s,r)=>s+(r.bookQty-r.actualQty),0);
+  document.getElementById('st-k-done').textContent=done;
+  document.getElementById('st-k-diff').textContent=diffs.length;
+  document.getElementById('st-k-plus').textContent='+'+plus;
+  document.getElementById('st-k-minus').textContent='-'+minus;
+}
+
+function updateStProgress(){
+  if(!stSession)return;
+  const total=stSession.items.length;
+  const done=stSession.items.filter(r=>r.actualQty!==null).length;
+  document.getElementById('st-progress-txt').textContent=`${done} / ${total} 品目`;
+  document.getElementById('st-progress-bar').style.width=total?Math.round(done/total*100)+'%':'0%';
+}
+
+function completeStocktake(){
+  if(!stSession){alert('棚卸セッションがありません');return;}
+  const diffs=stSession.items.filter(r=>r.actualQty!==null&&r.actualQty!==r.bookQty);
+  const undone=stSession.items.filter(r=>r.actualQty===null).length;
+  let msg=`<strong style="display:block;margin-bottom:8px">棚卸サマリー</strong>`;
+  msg+=`入力済み: <strong>${stSession.items.filter(r=>r.actualQty!==null).length}品目</strong>`;
+  if(undone>0)msg+=` ／ 未入力: <strong style="color:var(--warn)">${undone}品目</strong>`;
+  msg+=`<br>差異あり: <strong>${diffs.length}品目</strong>`;
+  if(diffs.length>0){
+    const plus=diffs.filter(r=>r.actualQty>r.bookQty).reduce((s,r)=>s+(r.actualQty-r.bookQty),0);
+    const minus=diffs.filter(r=>r.actualQty<r.bookQty).reduce((s,r)=>s+(r.bookQty-r.actualQty),0);
+    if(plus)msg+=` ／ 増加計: <strong style="color:var(--accent2)">+${plus}本</strong>`;
+    if(minus)msg+=` ／ 減少計: <strong style="color:var(--danger)">-${minus}本</strong>`;
+  }
+  document.getElementById('st-confirm-detail').innerHTML=msg;
+  openModal('m-st-confirm');
+}
+
+function applyStocktake(){
+  if(!stSession)return;
+  const note=document.getElementById('st-confirm-note').value.trim()||stSession.name+'確定';
+  const diffs=stSession.items.filter(r=>r.actualQty!==null&&r.actualQty!==r.bookQty);
+  // 差異を在庫調整として反映
+  diffs.forEach(item=>{
+    const adj=item.actualQty-item.bookQty;
+    const inv=inventory.find(r=>r.id===item.id);
+    if(inv){
+      inv.stock=item.actualQty;
+      procLog.unshift({date:stSession.date,type:'在庫調整',detail:`${item.sp}-${item.w}-${item.h}-${item.l}`,qty:adj>0?`+${adj}`:`${adj}`,wh:item.wh,note:`[棚卸] ${note} (帳簿:${item.bookQty}→実棚:${item.actualQty})`});
+    }
+  });
+  // 履歴へ保存
+  stHistory.unshift({
+    id:stSession.id,name:stSession.name,date:stSession.date,person:stSession.person,
+    wh:stSession.wh==='all'?'全倉庫':stSession.wh,
+    total:stSession.items.length,
+    diffCount:diffs.length,
+    completedAt:new Date().toLocaleString('ja-JP'),
+    note
+  });
+  stSession=null;
+  closeModal('m-st-confirm');
+  document.getElementById('st-kpi-wrap').style.display='none';
+  document.getElementById('st-progress-wrap').style.display='none';
+  document.getElementById('st-complete-btn').style.display='none';
+  updateStSessionUI();
+  renderStocktake();
+  renderProcHist();
+  updateKPIs();
+  renderInventory();
+  renderStHistory();
+  alert(`✅ 棚卸を確定しました！\n差異 ${diffs.length} 品目を在庫調整として記録しました。`);autoSave();
+}
+
+function renderStHistory(){
+  const el=document.getElementById('st-hist-list');
+  if(!stHistory.length){el.innerHTML='<p style="font-size:12px;color:var(--muted)">棚卸履歴がありません</p>';return;}
+  el.innerHTML=stHistory.map(h=>`
+    <div class="st-hist-item">
+      <div style="width:36px;height:36px;border-radius:8px;background:rgba(193,122,59,.1);border:1px solid rgba(193,122,59,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#7eb3ff" stroke-width="2" style="width:16px;height:16px"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${h.name}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${h.date} ／ ${h.wh} ／ 担当: ${h.person||'—'}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px"><span class="badge ${h.diffCount>0?'badge-amber':'badge-green'}">${h.diffCount>0?`差異 ${h.diffCount}品目`:'差異なし'}</span></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${h.total}品目確認 ／ 確定: ${h.completedAt}</div>
+      </div>
+    </div>`).join('');
+}
+
+function exportStCSV(){
+  if(!stSession&&!stHistory.length){alert('棚卸データがありません');return;}
+  const target=stSession?stSession.items:[];
+  if(!target.length){alert('棚卸セッション中のデータがありません');return;}
+  const h=['倉庫','樹種','等級','W','H','L','帳簿在庫','実棚数量','差異','差異率','メモ'];
+  const rows=target.map(r=>{
+    const diff=r.actualQty!==null?r.actualQty-r.bookQty:'';
+    const rate=r.actualQty!==null&&r.bookQty>0?(diff/r.bookQty*100).toFixed(1)+'%':'';
+    return [r.wh,r.sp,r.gr,r.w,r.h,r.l,r.bookQty,r.actualQty??'',diff,rate,r.note||''].join(',');
+  });
+  dl('\uFEFF'+h.join(',')+'\n'+rows.join('\n'),`棚卸_${stSession?.date||todayStr}.csv`,'text/csv');
+}
+
+const pageTitles={dashboard:'ダッシュボード',inventory:'在庫一覧',receive:'入庫登録',ship:'売上・出庫',process:'加工・破損登録',cost:'原価管理',orders:'発注管理',monthly:'月次在庫確認',pdf:'納品書読取（AI）',stocktake:'棚卸','p-settings':'☁ クラウド同期設定'};
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  // p-settings は id="p-settings"、その他は id="page-xxx"
+  const pageEl = document.getElementById(id==='p-settings'?'p-settings':'page-'+id);
+  if(pageEl) pageEl.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>{if(n.onclick?.toString().includes(`'${id}'`))n.classList.add('active');});
+  document.getElementById('page-title').textContent=pageTitles[id]||id;
+  if(id==='dashboard')setTimeout(()=>{drawCharts();renderActivity();},100);
+  if(id==='stocktake')renderStocktake();
+  if(id==='p-settings')setTimeout(renderSettingsPage,50);
+}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open');});
+
+init();
+
+
+// =====================================================
+// 添付ファイル（納品書・写真）管理システム
+// attachStore: { invId -> [{name, type, dataUrl, txId}] }
+// pendingAttach: { contextKey -> [{name, type, dataUrl}] }
+// =====================================================
+
+let attachStore = {};      // invId → 書類配列
+let pendingAttach = {};    // 'r' | 'sl' → 登録前の一時添付
+let viewerInvId = null;    // ビューア表示中の在庫ID
+let viewerCurIdx = 0;      // ビューア選択中インデックス
+
+// ── ドラッグ＆ドロップ ──
+function attachDragOver(e, key) {
+  e.preventDefault();
+  document.getElementById(key + '-attach-zone')?.classList.add('drag-over');
+}
+function attachDragLeave(key) {
+  document.getElementById(key + '-attach-zone')?.classList.remove('drag-over');
+}
+function attachDrop(e, key) {
+  e.preventDefault();
+  attachDragLeave(key);
+  if (e.dataTransfer.files.length) processAttachFiles(e.dataTransfer.files, key);
+}
+function attachFilePicked(e, key) {
+  if (e.target.files.length) processAttachFiles(e.target.files, key);
+  e.target.value = '';  // 同じファイルを再選択できるようリセット
+}
+
+// ── ファイルをBase64に変換して一時領域に保存 ──
+function processAttachFiles(files, key) {
+  if (!pendingAttach[key]) pendingAttach[key] = [];
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      pendingAttach[key].push({ name: file.name, type: file.type, dataUrl: e.target.result });
+      renderAttachPreview(key);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── プレビュー描画 ──
+function renderAttachPreview(key) {
+  const files = pendingAttach[key] || [];
+  const container = document.getElementById(key + '-preview');
+  if (!container) return;
+  container.innerHTML = files.map((f, i) => {
+    const isImg = f.type.startsWith('image/');
+    const isPdf = f.type === 'application/pdf';
+    return `<div class="attach-thumb ${isPdf ? 'pdf-card' : ''}" title="${f.name}">
+      ${isImg
+        ? `<img src="${f.dataUrl}" alt="${f.name}" onclick="previewTempFile('${key}',${i})">`
+        : `<div class="pdf-icon">📄</div><div class="pdf-name">${f.name}</div>`}
+      <button class="attach-del" onclick="removeAttach('${key}',${i})" title="削除">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// ── 一時添付ファイルを削除 ──
+function removeAttach(key, idx) {
+  if (pendingAttach[key]) {
+    pendingAttach[key].splice(idx, 1);
+    renderAttachPreview(key);
+  }
+}
+
+// ── 一時画像プレビュー（ライトボックス簡易） ──
+function previewTempFile(key, idx) {
+  const f = (pendingAttach[key] || [])[idx];
+  if (!f) return;
+  if (f.type.startsWith('image/')) {
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write(`<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${f.dataUrl}" style="max-width:100%;max-height:100%;object-fit:contain">
+<div id="toast-msg" style="position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:340px;box-shadow:0 4px 16px rgba(0,0,0,.2)"></div>
+</body></html>`);
+  }
+}
+
+// ── 登録時に invId に紐付けて保存 ──
+function commitAttach(key, invId) {
+  const files = pendingAttach[key] || [];
+  if (!files.length) return;
+  if (!attachStore[invId]) attachStore[invId] = [];
+  files.forEach(f => attachStore[invId].push({ ...f }));
+  delete pendingAttach[key];
+  const previewEl = document.getElementById(key + '-preview');
+  if (previewEl) previewEl.innerHTML = '';
+  autoSave();
+}
+
+// ── 書類ビューアを開く ──
+function openDocViewer(invId) {
+  viewerInvId = invId;
+  viewerCurIdx = 0;
+  const inv = inventory.find(r => r.id === invId);
+  const title = inv ? `📎 ${inv.sp}${inv.gr} ${inv.w}×${inv.h}×${inv.l||'—'} の書類` : '📎 添付書類';
+  document.getElementById('m-doc-viewer-title').textContent = title;
+  renderViewerThumbs();
+  if ((attachStore[invId] || []).length > 0) selectViewerFile(0);
+  openModal('m-doc-viewer');
+}
+
+// ── サムネイル行を描画 ──
+function renderViewerThumbs() {
+  const docs = attachStore[viewerInvId] || [];
+  const container = document.getElementById('viewer-thumbs');
+  const countEl = document.getElementById('viewer-doc-count');
+  if (countEl) countEl.textContent = docs.length + '件';
+  if (!docs.length) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px">まだ書類が添付されていません。「＋ 書類を追加」から追加できます。</div>';
+    clearViewerMain();
+    return;
+  }
+  container.innerHTML = docs.map((f, i) => {
+    const isImg = f.type.startsWith('image/');
+    const isPdf = f.type === 'application/pdf';
+    const activeClass = i === viewerCurIdx ? 'active' : '';
+    return `<div class="viewer-thumb ${isPdf ? 'pdf-mini' : ''} ${activeClass}" onclick="selectViewerFile(${i})" title="${f.name}">
+      ${isImg
+        ? `<img src="${f.dataUrl}" alt="${f.name}">`
+        : `<span>📄</span><span>${f.name.slice(-6)}</span>`}
+    </div>`;
+  }).join('');
+}
+
+// ── メイン表示エリアを切り替え ──
+function selectViewerFile(idx) {
+  const docs = attachStore[viewerInvId] || [];
+  if (!docs[idx]) return;
+  viewerCurIdx = idx;
+  const f = docs[idx];
+  const mainImg = document.getElementById('viewer-main-img');
+  const mainPdf = document.getElementById('viewer-main-pdf');
+  const mainEmpty = document.getElementById('viewer-main-empty');
+  const infoName = document.getElementById('viewer-info-name');
+  mainEmpty.style.display = 'none';
+  if (f.type.startsWith('image/')) {
+    mainImg.src = f.dataUrl;
+    mainImg.style.display = 'block';
+    mainPdf.style.display = 'none';
+  } else if (f.type === 'application/pdf') {
+    mainImg.style.display = 'none';
+    mainPdf.style.display = 'block';
+    document.getElementById('viewer-pdf-frame').src = f.dataUrl;
+  }
+  if (infoName) infoName.textContent = f.name;
+  // サムネイルのアクティブ状態を更新
+  document.querySelectorAll('.viewer-thumb').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+}
+
+function clearViewerMain() {
+  const mainImg = document.getElementById('viewer-main-img');
+  const mainPdf = document.getElementById('viewer-main-pdf');
+  const mainEmpty = document.getElementById('viewer-main-empty');
+  if (mainImg) { mainImg.style.display = 'none'; mainImg.src = ''; }
+  if (mainPdf) { mainPdf.style.display = 'none'; }
+  if (mainEmpty) mainEmpty.style.display = 'block';
+}
+
+// ── ビューアから書類を追加 ──
+function viewerAddFiles(e) {
+  if (!viewerInvId || !e.target.files.length) return;
+  const files = Array.from(e.target.files);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (!attachStore[viewerInvId]) attachStore[viewerInvId] = [];
+      attachStore[viewerInvId].push({ name: file.name, type: file.type, dataUrl: ev.target.result });
+      loaded++;
+      if (loaded === files.length) {
+        viewerCurIdx = attachStore[viewerInvId].length - 1;
+        renderViewerThumbs();
+        selectViewerFile(viewerCurIdx);
+        autoSave();
+        renderInventory(); // 書類アイコン件数を更新
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+// ── 現在表示中の書類をダウンロード ──
+function viewerDownloadCurrent() {
+  const docs = attachStore[viewerInvId] || [];
+  const f = docs[viewerCurIdx];
+  if (!f) return;
+  const a = document.createElement('a');
+  a.href = f.dataUrl;
+  a.download = f.name;
+  a.click();
+}
+
+// ── 現在表示中の書類を削除 ──
+function viewerDeleteCurrent() {
+  const docs = attachStore[viewerInvId] || [];
+  if (!docs.length) return;
+  if (!confirm(`「${docs[viewerCurIdx]?.name}」を削除しますか？`)) return;
+  docs.splice(viewerCurIdx, 1);
+  viewerCurIdx = Math.max(0, viewerCurIdx - 1);
+  renderViewerThumbs();
+  if (docs.length) selectViewerFile(viewerCurIdx);
+  else clearViewerMain();
+  autoSave();
+  renderInventory(); // 在庫一覧の書類アイコンを更新
+}
+
+// ===== 在庫編集機能 =====
+function openEditInv(id){
+  const r=inventory.find(x=>x.id===id);
+  if(!r)return;
+  document.getElementById('ei-id').value=id;
+  const setVal=(eid,val)=>{const el=document.getElementById(eid);if(el)el.value=val??'';};
+  setVal('ei-status',r.status||'完成品');
+  setVal('ei-wh',r.wh||'');
+  setVal('ei-sp',r.sp||'');
+  setVal('ei-gr',r.gr||'');
+  setVal('ei-w',r.w||'');
+  setVal('ei-h',r.h||'');
+  setVal('ei-l',r.l||'');
+  setVal('ei-stock',r.stock||0);
+  setVal('ei-price',r.price||'');
+  setVal('ei-note',r.note||'');
+  calcEditInv();
+  openModal('m-edit-inv');
+}
+
+function calcEditInv(){
+  const s=+document.getElementById('ei-stock').value||0;
+  const p=+document.getElementById('ei-price').value||0;
+  const el=document.getElementById('ei-calc-val');
+  if(el)el.textContent=(s&&p)?'¥'+(s*p).toLocaleString():'¥—';
+}
+
+// 在庫編集フォームの本数・単価変更時にリアルタイム計算
+['ei-stock','ei-price'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',calcEditInv);
+});
+
+function saveEditInv(){
+  const idVal=document.getElementById('ei-id').value;
+  // タイトルをリセット
+  const h=document.querySelector('#m-edit-inv .modal-header h3');
+  if(h)h.textContent='✏️ 在庫品目を編集';
+  if(idVal==='new'){
+    // 新規追加モード
+    const getV=eid=>{const el=document.getElementById(eid);return el?el.value:'';}
+    const newStock=+getV('ei-stock');
+    if(isNaN(newStock)||newStock<0){alert('在庫本数に正しい数値を入力してください');return;}
+    const newId=inventory.length>0?Math.max(...inventory.map(x=>x.id))+1:1;
+    inventory.push({id:newId,wh:getV('ei-wh'),sp:getV('ei-sp'),gr:getV('ei-gr'),
+      w:+getV('ei-w')||0,h:+getV('ei-h')||0,l:+getV('ei-l')||0,
+      stock:newStock,inQty:0,outQty:0,price:+getV('ei-price')||0,
+      status:getV('ei-status')||'完成品',note:getV('ei-note')});
+    filteredInv=[...inventory];
+    closeModal('m-edit-inv');
+    soundOK();
+    updateKPIs();renderInventory();renderCost();drawCharts();
+    autoSave();alert(`✅ 新規品目を追加しました`);
+    return;
+  }
+  const id=+idVal;
+  const r=inventory.find(x=>x.id===id);
+  if(!r){alert('編集対象が見つかりません');return;}
+  const getV=eid=>{const el=document.getElementById(eid);return el?el.value:'';}
+  const newStock=+getV('ei-stock');
+  if(isNaN(newStock)||newStock<0){alert('在庫本数に正しい数値を入力してください');return;}
+  r.status=getV('ei-status')||r.status;
+  r.wh=getV('ei-wh')||r.wh;
+  r.sp=getV('ei-sp')||r.sp;
+  r.gr=getV('ei-gr')||r.gr;
+  r.w=+getV('ei-w')||r.w;
+  r.h=+getV('ei-h')||r.h;
+  r.l=+getV('ei-l')||0;
+  r.stock=newStock;
+  r.price=+getV('ei-price')||0;
+  r.note=getV('ei-note');
+  closeModal('m-edit-inv');
+  soundOK();
+  updateKPIs();renderInventory();renderCost();drawCharts();
+  autoSave();alert(`✅ 編集完了\n${r.sp}${r.gr} ${r.w}×${r.h}×${r.l||'—'} ${r.stock.toLocaleString()}本`);
+}
+
+function deleteInv(id){
+  const r=inventory.find(x=>x.id===id);
+  if(!r)return;
+  if(!confirm(`⚠️ 以下の品目を削除しますか？\n\n${r.status} | ${r.wh} | ${r.sp}${r.gr} ${r.w}×${r.h}×${r.l||'—'} / ${r.stock}本\n\nこの操作は元に戻せません。`))return;
+  inventory=inventory.filter(x=>x.id!==id);
+  filteredInv=filteredInv.filter(x=>x.id!==id);
+  autoSave();
+  updateKPIs();renderInventory();renderCost();drawCharts();
+  alert('🗑️ 削除しました');
+}
+
+
+// ===== 新規品目追加モーダル =====
+function openNewInvModal(){
+  // 編集モーダルをリセットして「新規」として開く
+  document.getElementById('ei-id').value='new';
+  ['ei-status','ei-wh','ei-sp','ei-gr','ei-w','ei-h','ei-l','ei-stock','ei-price','ei-note'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    if(id==='ei-status')el.value='完成品';
+    else if(id==='ei-wh')el.value='小野';
+    else if(id==='ei-sp')el.value='杉';
+    else if(id==='ei-gr')el.value='AD';
+    else el.value='';
+  });
+  document.getElementById('ei-calc-val').textContent='¥—';
+  // モーダルタイトルを変更
+  const h=document.querySelector('#m-edit-inv .modal-header h3');
+  if(h)h.textContent='➕ 新規品目を追加';
+  openModal('m-edit-inv');
+}
+
+// ===== 発注編集機能 =====
+function openEditOrder(idx){
+  const o=orders[idx];
+  if(!o)return;
+  document.getElementById('eo-idx').value=idx;
+  const setV=(eid,val)=>{const el=document.getElementById(eid);if(el)el.value=val??'';};
+  setV('eo-date',o.date||'');
+  setV('eo-sup',o.sup||'');
+  setV('eo-sp',o.sp||'');
+  setV('eo-gr',o.gr||'');
+  setV('eo-w',o.w||'');
+  setV('eo-h',o.h||'');
+  setV('eo-l',o.l||'');
+  setV('eo-qty',o.qty||'');
+  setV('eo-dest',o.dest||'');
+  setV('eo-due',o.due||'');
+  setV('eo-amount',o.amount||'');
+  setV('eo-status',o.status||'発注済');
+  openModal('m-edit-order');
+}
+
+function saveEditOrder(){
+  const idx=+document.getElementById('eo-idx').value;
+  const o=orders[idx];
+  if(!o){alert('編集対象が見つかりません');return;}
+  const getV=eid=>{const el=document.getElementById(eid);return el?el.value:'';}
+  const sup=getV('eo-sup');
+  if(!sup){alert('仕入先を入力してください');return;}
+  o.date=getV('eo-date');
+  o.sup=sup;
+  o.sp=getV('eo-sp');
+  o.gr=getV('eo-gr');
+  o.w=+getV('eo-w')||0;
+  o.h=+getV('eo-h')||0;
+  o.l=+getV('eo-l')||0;
+  o.qty=+getV('eo-qty')||0;
+  o.dest=getV('eo-dest');
+  o.due=getV('eo-due');
+  o.amount=+getV('eo-amount')||0;
+  o.status=getV('eo-status');
+  closeModal('m-edit-order');
+  soundOK();
+  filterOrd();
+  alert('✅ 発注情報を更新しました');
+}
+
+
+
+// ── トースト通知 ──
+let _toastTimer;
+function showToast(msg, type=''){
+  const el=document.getElementById('toast-msg');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.background = type==='warn' ? 'var(--warn)' : type==='error' ? 'var(--danger)' : type==='success' ? 'var(--accent2)' : 'var(--text)';
+  el.style.opacity='1';
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>{ el.style.opacity='0'; }, 2800);
+}
+
+// ================================================================
+// ☁ クラウド永続化システム（Google Apps Script 連携）
+// どのブラウザ・PCからでも同じデータにアクセスできます
+// ================================================================
+const LS_KEY = 'woodstock_v41';
+
+// GAS の URLを保持（LocalStorageに記憶）
+let GAS_URL = localStorage.getItem('woodstock_gas_url') || '';
+let _syncStatus = GAS_URL ? 'ready' : 'not_configured';
+let _syncTimer = null;
+
+// ── URLを設定する ──
+function setGasUrl(url) {
+  url = (url || '').trim();
+  if (!url) { showSyncStatus('error', 'URLを入力してください'); return; }
+  if (!url.startsWith('https://script.google.com')) {
+    showSyncStatus('error', 'URLの形式が違います。\nhttps://script.google.com から始まるURLを入力してください');
+    return;
+  }
+  GAS_URL = url;
+  localStorage.setItem('woodstock_gas_url', url);
+  showSyncStatus('loading', '接続テスト中...');
+  loadFromCloud().then(ok => {
+    if (ok) showSyncStatus('ok', '✅ 接続成功！データを読み込みました');
+    else    showSyncStatus('error', '⚠ 接続できませんでした。URLを確認してください');
+  });
+}
+
+// ── クラウドに保存する（非同期）──
+async function saveToCloud() {
+  // まずLocalStorageにバックアップ
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      inventory, transactions, orders, stHistory, procLog,
+      savedAt: new Date().toISOString()
+    }));
+  } catch(_) {}
+
+  if (!GAS_URL) return;
+  showSyncStatus('loading', '保存中...');
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ inventory, transactions, orders, stHistory, procLog })
+    });
+    const r = await res.json();
+    if (r.ok) showSyncStatus('ok', '☁ クラウドに保存済');
+    else throw new Error(r.error);
+  } catch(e) {
+    showSyncStatus('offline', '📵 オフライン（ローカルに保存）');
+  }
+}
+
+// ── クラウドから読み込む（非同期）──
+async function loadFromCloud() {
+  // まずLocalStorageから即時復元
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d.inventory    && d.inventory.length    > 0) inventory    = d.inventory;
+      if (d.transactions && d.transactions.length > 0) transactions = d.transactions;
+      if (d.orders       && d.orders.length       > 0) orders       = d.orders;
+      if (d.stHistory    && d.stHistory.length    > 0) stHistory    = d.stHistory;
+      if (d.procLog      && d.procLog.length      > 0) procLog      = d.procLog;
+      updateKPIs(); renderInventory(); renderOrders();
+      renderCost(); renderMonthly(); renderProcHist();
+      renderActivity(); setTimeout(drawCharts, 100);
+    }
+  } catch(_) {}
+
+  if (!GAS_URL) return false;
+
+  try {
+    showSyncStatus('loading', '読み込み中...');
+    const res = await fetch(GAS_URL + '?t=' + Date.now());
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error);
+    if (d.inventory    && d.inventory.length    > 0) inventory    = d.inventory;
+    if (d.transactions && d.transactions.length > 0) transactions = d.transactions;
+    if (d.orders       && d.orders.length       > 0) orders       = d.orders;
+    if (d.stHistory    && d.stHistory.length    > 0) stHistory    = d.stHistory;
+    if (d.procLog      && d.procLog.length      > 0) procLog      = d.procLog;
+    updateKPIs(); renderInventory(); renderOrders();
+    renderCost(); renderMonthly(); renderProcHist();
+    renderActivity(); setTimeout(drawCharts, 100);
+    showSyncStatus('ok', '☁ クラウドと同期済');
+    return true;
+  } catch(e) {
+    showSyncStatus('offline', '📵 オフライン');
+    return false;
+  }
+}
+
+// ── ステータス表示を更新 ──
+function showSyncStatus(type, msg) {
+  _syncStatus = type;
+  const el = document.getElementById('sync-status-badge');
+  if (!el) return;
+  const styles = {
+    ok:             { bg: 'rgba(87,115,88,.12)',  color: '#2d4a2e',        border: 'rgba(87,115,88,.3)' },
+    loading:        { bg: 'rgba(125,146,120,.12)',color: '#384e3a',        border: 'rgba(125,146,120,.3)' },
+    offline:        { bg: 'rgba(211,84,0,.12)',   color: 'var(--warn)',    border: 'rgba(211,84,0,.3)'   },
+    error:          { bg: 'rgba(192,57,43,.1)',   color: 'var(--danger)',  border: 'rgba(192,57,43,.3)'  },
+    not_configured: { bg: 'rgba(97,83,65,.08)',   color: 'var(--muted)',   border: 'var(--border)'       },
+  };
+  const s = styles[type] || styles.not_configured;
+  el.textContent = msg;
+  el.style.background = s.bg;
+  el.style.color = s.color;
+  el.style.borderColor = s.border;
+}
+
+// ── 自動保存：データ変更後に呼ぶ共通関数 ──
+function autoSave() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(saveToCloud, 1500); // 1.5秒後に保存（連続操作をまとめる）
+}
+
+// ── データリセット ──
+function resetAllData() {
+  if (!confirm(
+    '⚠️ すべてのデータを初期値にリセットしますか？\n\n' +
+    '・在庫データ\n・入出庫の履歴\n・発注情報\n・棚卸の記録\n\n' +
+    '※この操作は元に戻せません'
+  )) return;
+  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem('woodstock_gas_url');
+  location.reload();
+}
+
+
+function applySettingsUrl(){
+  const url = document.getElementById('settings-gas-url')?.value?.trim();
+  setGasUrl(url);
+  renderSettingsPage();
+}
+function testSync(){
+  showSyncStatus('loading','接続テスト中...');
+  loadFromCloud().then(ok=>{
+    renderSettingsPage();
+    if(ok) alert('✅ 接続成功！データを読み込みました');
+    else   alert('⚠ 接続できませんでした。\nURLが正しいか、デプロイ設定を確認してください');
+  });
+}
+function manualSync(){
+  showSyncStatus('loading','読み込み中...');
+  loadFromCloud().then(ok=>{
+    renderSettingsPage();
+    if(ok) alert('✅ 最新データを読み込みました');
+    else   alert('⚠ オフラインです。データはローカルに保存されています');
+  });
+}
+function manualSaveNow(){
+  saveToCloud().then(()=>{
+    renderSettingsPage();
+    alert('💾 保存しました');
+  });
+}
+function renderSettingsPage(){
+  // URL入力欄を現在値で埋める
+  const urlEl = document.getElementById('settings-gas-url');
+  if(urlEl && GAS_URL) urlEl.value = GAS_URL;
+  // 状態表示
+  const statusEl = document.getElementById('settings-sync-status');
+  if(!statusEl) return;
+  const labels = {
+    ok:             '✅ クラウドと同期済み',
+    loading:        '⟳ 同期中...',
+    offline:        '📵 オフライン（ローカルに保存中）',
+    error:          '❌ 接続エラー',
+    not_configured: '⚙ まだ設定されていません',
+    ready:          '🕐 設定済み（未同期）',
+  };
+  statusEl.textContent = labels[_syncStatus] || _syncStatus;
+}
+
+// ── ページを閉じる直前にも保存 ──
+window.addEventListener('beforeunload', () => { if(GAS_URL) saveToCloud(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && GAS_URL) saveToCloud();
+});
+// 3分ごとに自動保存
+setInterval(() => { saveToCloud(); }, 3 * 60 * 1000);
+
+</script>
+
+<div id="toast-msg" style="position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:340px;box-shadow:0 4px 16px rgba(0,0,0,.2)"></div>
+</body>
+</html>
